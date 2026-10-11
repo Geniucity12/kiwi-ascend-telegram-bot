@@ -44,7 +44,6 @@ async function main() {
     { command: "portfolio", description: "Portfolio PnL & share card" },
     { command: "alerts", description: "Active launch alerts" },
     { command: "status", description: "Bot & data status" },
-    { command: "markets", description: "EVM secondary markets" },
     { command: "help", description: "How to use Kiwi" },
   ];
 

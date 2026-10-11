@@ -15,7 +15,7 @@ const OPENSEA_BASE = "https://api.opensea.io/api/v2";
 /** Map our chain keys to OpenSea chain slugs. Elysium is not on OpenSea. */
 export function openseaSlugForChain(chainKey: string): string | undefined {
   const chain = SUPPORTED_CHAINS.find((c) => c.key === chainKey);
-  return chain?.openSeaSlug;
+  return (chain as any)?.openSeaSlug;
 }
 
 export async function openseaGet<T>(path: string): Promise<T> {

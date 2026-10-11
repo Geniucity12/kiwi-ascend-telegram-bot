@@ -147,8 +147,9 @@ export function registerHandlers(bot: Bot) {
     await renderWatchlistMenu(ctx);
   });
 
+  // Archived: cross-chain secondary markets (OpenSea) — Elysium-only mode.
   bot.command("markets", async (ctx) => {
-    await renderMarketsMenu(ctx);
+    await ctx.reply("Archived: cross-chain markets (OpenSea-backed) are disabled in Elysium-only mode.\nUse `0x…` paste → Token Card, /launch, /deployments, or watch Kalos (https://www.kalos.fun) once its contracts are set.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
   });
 
   bot.command("portfolio", async (ctx) => {
@@ -384,7 +385,7 @@ export function registerHandlers(bot: Bot) {
 
   bot.callbackQuery("menu_markets", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
-    await renderMarketsMenu(ctx);
+    await ctx.reply("Archived. Use /launch and /deployments in Elysium-only mode.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
   });
 
   bot.callbackQuery("menu_mints", async (ctx) => {
@@ -1541,8 +1542,8 @@ async function renderLaunchMenu(ctx: Context) {
 
 async function renderMarketsMenu(ctx: Context) {
   let msg = `🏪 *Markets · EVM*\n\n`;
-  msg += `Secondary-market tooling for OpenSea-listed EVM chains (floor checks, inventory, minting, snipe rules, trade history).\n\n`;
-  msg += `These features are *not* Elysium-native — Elysium has no OpenSea market. For Elysium launches use 🚀 Launches, ⏳ Mints, 🆕 Deployments, and 👀 Watchlist.`;
+  msg += `Archived: cross-chain secondary markets (OpenSea) are disabled in Elysium-only mode.\n\n`;
+  msg += `For Elysium-native discovery use 🚀 Launches, ⏳ Mints, 🆕 Deployments, and 👀 Watchlist. Kalos (https://www.kalos.fun) will be the Elysium NFT marketplace once its contracts are set.`;
 
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: marketsKeyboard });
 }
@@ -2046,9 +2047,8 @@ async function renderHelpMenu(ctx: Context) {
   msg += `*Wallet:*\n`;
   msg += `• \`/wallet\` — Address, balance & withdraw\n`;
   msg += `\n`;
-  msg += `*Secondary markets (non-Elysium EVM chains):*\n`;
-  msg += `• \`/markets\` — OpenSea-backed floor, NFT, mint, snipe\n`;
-  msg += `• \`/chains\` — Switch active network\n`;
+  msg += `*Elysium note:*\n`;
+  msg += `Cross-chain secondary markets (OpenSea) are archived in Elysium-only mode. Use /launch and /deployments for Elysium-native discovery.\n`;
   msg += `\n`;
   msg += `*Kiwi focus:*\n`;
   msg += `- Live Elysium launch & deployment monitoring\n`;
