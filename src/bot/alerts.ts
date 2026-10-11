@@ -1,0 +1,202 @@
+import type { Bot } from "grammy";
+import { dbService } from "../db";
+import { fetchLaunchProjects, getLaunchStatusLabel, mintWindowLine, getMintWindowState, type LaunchProject, type LaunchStatus } from "../data/launches";
+import { marketplaceService } from "../engine/marketplace";
+import { getChainConfig, ELYSIUM, ALERT_POLL_INTERVAL_MS } from "../config";
+import { getChainHealth, scanRecentDeployments, getWalletActivity } from "../engine/elysium";
+import type { Address } from "viem";
+
+/**
+ * Background alert scheduler.
+ *
+ * Four jobs, run on an interval:
+ *   1. Launch-status watcher — refetches the launch board and DMs every user
+ *      when a project changes status (e.g. upcoming → minting → live).
+ *   2. Mint-window watcher — DMs when a mint window flips to "opens_soon" or
+ *      "live_now" for the first time.
+ *   3. Elysium deployments watcher — surfaces fresh on-chain contract
+ *      deployments on Elysium (new launches appearing on-chain).
+ *   4. Watch-motion watcher — DMs watch owners when a tracked address's
+ *      balance moves or fresh transfers appear.
+ * Floor watcher (OpenSea-backed) is retained for EVM snipe tasks.
+ *
+ * All sends are best-effort; a failed DM never crashes the loop.
+ */
+
+const lastKnownStatuses = new Map<string, string>();
+let initialized = false;
+let bot: Bot | null = null;
+const seenDeploymentTx = new Set<string>();
+const alertedMintWindows = new Set<string>();
+
+
+async function notifyUsers(text: string) {
+  if (!bot) return;
+  const users = dbService.getAllUserIds();
+  for (const userId of users) {
+    try {
+      await bot.api.sendMessage(userId, text, { parse_mode: "Markdown" });
+    } catch (err) {
+      // User may have blocked the bot; ignore.
+    }
+  }
+}
+
+async function checkLaunches() {
+  const projects: LaunchProject[] = await fetchLaunchProjects();
+  if (!initialized) {
+    for (const p of projects) lastKnownStatuses.set(p.id, p.status);
+    initialized = true;
+    return;
+  }
+  for (const p of projects) {
+    const prev = lastKnownStatuses.get(p.id);
+    if (prev && prev !== p.status) {
+      const emoji = p.status === "live" ? "🟢" : p.status === "minting" ? "🟡" : "🔵";
+      await notifyUsers(
+        `${emoji} *Launch Update:* *${p.name}*\n` +
+          `_Status: ${getLaunchStatusLabel(prev as LaunchStatus)} → ${getLaunchStatusLabel(p.status)}_\n` +
+          `${p.summary}\n${mintWindowLine(p)}${p.website ? `\nWebsite: ${p.website}` : ""}`
+      );
+    }
+    lastKnownStatuses.set(p.id, p.status);
+  }
+}
+
+/** Alert once when a mint window flips to opens_soon or live_now. */
+async function checkMintWindows() {
+  const projects: LaunchProject[] = await fetchLaunchProjects();
+  const now = Date.now();
+  for (const p of projects) {
+    const state = getMintWindowState(p, now);
+    if (state !== "opens_soon" && state !== "live_now") continue;
+    const key = `${p.id}:${state}`;
+    if (alertedMintWindows.has(key)) continue;
+    alertedMintWindows.add(key);
+    const emoji = state === "live_now" ? "⏳" : "⏰";
+    await notifyUsers(
+      `${emoji} *Mint Window ${state === "live_now" ? "OPEN" : "opening soon"}:* *${p.name}*\n` +
+        `${mintWindowLine(p, now)}\n` +
+        (p.contractAddress ? `Contract: \`${p.contractAddress}\`\n` : "") +
+        (p.website ? `Website: ${p.website}` : "")
+    );
+  }
+}
+
+/** Surface fresh on-chain contract deployments on Elysium. */
+async function checkElysiumDeployments() {
+  try {
+    await getChainHealth(ELYSIUM.key);
+  } catch {
+    return; // chain unreachable this cycle
+  }
+  let deployments;
+  try {
+    deployments = await scanRecentDeployments(40, ELYSIUM.key);
+  } catch {
+    return;
+  }
+  const fresh = deployments.filter((d) => !seenDeploymentTx.has(d.txHash));
+  for (const d of fresh) seenDeploymentTx.add(d.txHash);
+  // Keep the set bounded across long runs.
+  if (seenDeploymentTx.size > 500) {
+    const arr = [...seenDeploymentTx].slice(-300);
+    seenDeploymentTx.clear();
+    for (const h of arr) seenDeploymentTx.add(h);
+  }
+  if (!initialized) return; // first tick only seeds
+  if (fresh.length === 0) return;
+  const lines = fresh.slice(0, 5).map(
+    (d) =>
+      `• \`${d.address.slice(0, 10)}…\` by \`${d.deployer.slice(0, 10)}…\` (block ${d.blockNumber})`
+  );
+  await notifyUsers(
+    `🆕 *Fresh Elysium deployments* (${fresh.length} new)\n\n` +
+      lines.join("\n") +
+      `\n\nTrack one: \`/watch <0x…> [label]\`\nExplorer: ${ELYSIUM.explorerUrl}`
+  );
+}
+
+async function checkFloors() {
+  const tasks = dbService.getAllActiveTasks();
+  for (const task of tasks) {
+    try {
+      const stats = await marketplaceService.autoDetectAndGetStats(task.contract_address);
+      if (stats.floorPrice === undefined || stats.floorPrice <= 0) continue;
+      if (stats.floorPrice <= task.max_price_eth) {
+        const symbol = stats.floorCurrency || getChainConfig(task.chain).symbol;
+        await notifyUsers(
+          `🎯 *Floor Hit!* (Task #${task.id})\n` +
+            `📄 \`${stats.name}\`\n` +
+            `💰 Floor: *${stats.floorPrice} ${symbol}* ≤ your max *${task.max_price_eth} ${symbol}*\n` +
+            `🔗 ${stats.explorerUrl}`
+        );
+        // Avoid re-alerting every interval for the same trigger.
+        dbService.updateTaskStatus(task.id, "paused");
+      }
+    } catch {
+      // Skip contracts we cannot resolve this cycle.
+    }
+  }
+}
+
+/** DM watch owners on balance movement or fresh transfers. Targeted, not broadcast. */
+async function checkWatchMotion() {
+  if (!bot) return;
+  const watches = dbService.getAllWatches();
+  for (const w of watches) {
+    let activity;
+    try {
+      activity = await getWalletActivity(w.address as Address, 30, w.chain);
+    } catch {
+      continue; // unreachable this cycle
+    }
+    const prevBalance = w.last_seen_balance_wei;
+    const prevTxCount = w.last_seen_tx_count ?? 0;
+    const newBalance = activity.balanceWei.toString();
+    const newTxCount = activity.transfers.length;
+    dbService.updateWatchSnapshot(w.id, newBalance, newTxCount);
+
+    // Baseline tick: first snapshot only seeds, no alert.
+    if (prevBalance === null) continue;
+    const moved = prevBalance !== newBalance || newTxCount > prevTxCount;
+    if (!moved) continue;
+
+    const cfg = getChainConfig(w.chain);
+    const label = w.label ?? "Watched address";
+    let msg = `👀 *Watch alert:* *${label}* [${cfg.name}]\n\n`;
+    msg += `\`${w.address}\`\n`;
+    msg += `💰 Balance: \`${activity.balanceEth} ${activity.symbol}\`\n`;
+    const latest = activity.transfers[0];
+    if (latest) {
+      const dir = latest.from.toLowerCase() === w.address.toLowerCase() ? "➡️ OUT" : "⬅️ IN";
+      msg += `${dir} ${latest.valueEth} ${activity.symbol} — [tx](${cfg.explorerUrl}/tx/${latest.txHash})`;
+    }
+    try {
+      await bot.api.sendMessage(w.user_id, msg, { parse_mode: "Markdown" });
+    } catch {
+      // blocked or deleted; ignore
+    }
+  }
+}
+
+async function tick() {
+  try {
+    await checkLaunches();
+    await checkMintWindows();
+    await checkElysiumDeployments();
+    await checkWatchMotion();
+    await checkFloors();
+  } catch (err) {
+    console.error("Alert tick failed:", err);
+  }
+}
+
+export function startAlertScheduler(botInstance: Bot) {
+  bot = botInstance;
+  const interval = Number.isFinite(ALERT_POLL_INTERVAL_MS) && ALERT_POLL_INTERVAL_MS > 0
+    ? ALERT_POLL_INTERVAL_MS
+    : 5 * 60_000;
+  console.log(`Alert scheduler running every ${Math.round(interval / 1000)}s`);
+  setInterval(tick, interval);
+}
