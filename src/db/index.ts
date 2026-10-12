@@ -15,6 +15,7 @@ export interface UserRow {
   wallet_address: string;
   selected_chain: string;
   created_at: string;
+  deploy_alerts_enabled?: boolean;
 }
 
 /** Encrypted custodial key material (AES-256-GCM hex). Never leaves the host. */
@@ -143,7 +144,8 @@ class JsonStore {
       if (existsSync(this.file)) {
         const raw = readFileSync(this.file, "utf8");
         const parsed = JSON.parse(raw) as Partial<Schema>;
-        this.data = { ...emptySchema(), ...parsed };
+        this.data = { ...emptySchema(), ...parsed } as Schema;
+        for (const uid of Object.keys((this.data as any).users ?? {})) { const u=(this.data as any).users[uid]; if(u && u.deploy_alerts_enabled===undefined) u.deploy_alerts_enabled=true; }
       }
     } catch (err) {
       console.error("Failed to load DB, starting fresh:", err);
@@ -510,6 +512,26 @@ export const dbService = {
     row.last_seen_balance_wei = balanceWei;
     row.last_seen_tx_count = txCount;
     store.save();
+  },
+  isDeployAlertsEnabled(userId: number): boolean {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u) return true;
+    return u.deploy_alerts_enabled !== false;
+  },
+  setDeployAlertsEnabled(userId: number, enabled: boolean): void {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u) return;
+    u.deploy_alerts_enabled = enabled;
+    store.save();
+  },
+  toggleDeployAlerts(userId: number): boolean {
+    const cur = this.isDeployAlertsEnabled(userId);
+    this.setDeployAlertsEnabled(userId, !cur);
+    return !cur;
+  },
+  getDeployAlertUserIds(): number[] {
+    const users = store.schema.users as Record<number, UserRow>;
+    return Object.keys(users).map(Number).filter((id) => (users[id] as any).deploy_alerts_enabled !== false);
   },
 };
 

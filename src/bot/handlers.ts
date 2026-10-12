@@ -6,7 +6,7 @@ import { SUPPORTED_CHAINS, getChainConfig, FEE_PERCENTAGE, FEE_RECIPIENT_WALLET,
 import { marketplaceService } from "../engine/marketplace";
 import { minterService } from "../engine/minter";
 import { openSeaService } from "../engine/opensea";
-import { getChainHealth, scanRecentDeployments, getWalletActivity } from "../engine/elysium";
+import { getChainHealth, scanRecentDeployments, getDeploymentMeta, getWalletActivity } from "../engine/elysium";
 import { analyzeToken, formatSafetyReport } from "../engine/safety";
 import { tradingService } from "../engine/trading";
 import {
@@ -134,13 +134,25 @@ export function registerHandlers(bot: Bot) {
     await promptWatchAddress(ctx, arg);
   });
 
+  bot.command("watchlist", async (ctx) => {
+    await renderWatchlistMenu(ctx);
+  });
+
+  bot.command("mutedeploys", async (ctx) => {
+    const uid = ctx.from?.id; if (!uid) return;
+    dbService.setDeployAlertsEnabled(uid, false);
+    await ctx.reply("🔕 Deployment alerts muted. Use /unmutedeploys to re-enable.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  });
+
+  bot.command("unmutedeploys", async (ctx) => {
+    const uid = ctx.from?.id; if (!uid) return;
+    dbService.setDeployAlertsEnabled(uid, true);
+    await ctx.reply("🔔 Deployment alerts unmuted. Check /deployments.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  });
+
   bot.command("unwatch", async (ctx) => {
     const arg = ctx.message?.text?.split(/\s+/).slice(1).join(" ") ?? "";
     await handleUnwatch(ctx, arg);
-  });
-
-  bot.command("watchlist", async (ctx) => {
-    await renderWatchlistMenu(ctx);
   });
 
   bot.command("track", async (ctx) => {
@@ -386,6 +398,24 @@ export function registerHandlers(bot: Bot) {
   bot.callbackQuery("menu_markets", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply("Archived. Use /launch and /deployments in Elysium-only mode.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  });
+  bot.callbackQuery(/^watch_add_(0x[a-fA-F0-9]{40})$/i, async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    await handleQuickWatch(ctx, ctx.match[1]);
+  });
+
+  bot.callbackQuery("deploy_alert_toggle", async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    const uid = ctx.from?.id; if (!uid) return;
+    const enabled = dbService.toggleDeployAlerts(uid);
+    await ctx.reply(enabled ? "🔔 Deployment alerts unmuted." : "🔕 Deployment alerts muted. Use /unmutedeploys to re-enable.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  });
+
+  bot.callbackQuery("deploy_alert_toggle_off", async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    const uid = ctx.from?.id; if (!uid) return;
+    dbService.setDeployAlertsEnabled(uid, false);
+    await ctx.reply("🔕 Muted deployment alerts. Use /unmutedeploys or /alerts to re-enable.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
   });
 
   bot.callbackQuery("menu_mints", async (ctx) => {
@@ -1621,13 +1651,29 @@ async function renderDeploymentsMenu(ctx: Context, depth: number = 40) {
   }
 
   let msg = `🆕 *Fresh Deployments* — ${deployments.length} new on Elysium\n\n`;
+  msg += `_Tap any address to copy it. Tap 🛡️ Safety or 📄 Card to inspect._\n\n`;
   const kb = new InlineKeyboard();
-  for (const d of deployments.slice(0, 8)) {
-    msg += `• \`${d.address.slice(0, 10)}…\`\n  by \`${d.deployer.slice(0, 10)}…\` • block ${d.blockNumber}\n`;
-    kb.text(`👀 Watch ${d.address.slice(0, 8)}…`, `watch_add_${d.address}`).row();
+  for (const d of deployments.slice(0, 5)) {
+    let label = "📄 Contract";
+    try {
+      const meta = await getDeploymentMeta(d.address, ELYSIUM.key);
+      label = meta.label;
+    } catch { /* keep default */ }
+    const name = label.replace(/^[^\s]+\s/, "");
+    msg += `${label}\n`;
+    msg += `\`${d.address}\`\n`;
+    msg += `  by \`${d.deployer}\` • block ${d.blockNumber}\n`;
+    msg += `  [tx](${ELYSIUM.explorerUrl}/tx/${d.txHash}) • [address](${ELYSIUM.explorerUrl}/address/${d.address})\n`;
+    kb.text(`🛡️ ${name.slice(0, 24)}`, `tok_safety_${d.address}`).row();
+    kb.text(`📄 Card`, `tok_card_${d.address}`)
+      .text(`👀 Watch`, `watch_add_${d.address}`)
+      .row();
   }
-  msg += `\nTap 👀 to track any deployment for balance or activity movement.`;
-  kb.text("🔙 Main Menu", "menu_main");
+  msg += `\n🔔 Auto-alerts: \`/mutedeploys\` stops these, \`/unmutedeploys\` turns them back on.`;
+  kb.text("🔔 Deployment Alerts: ON", "deploy_alert_toggle")
+    .text("🔕 Mute", "deploy_alert_toggle_off")
+    .row()
+    .text("🔙 Main Menu", "menu_main");
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
 }
 
@@ -1780,6 +1826,9 @@ async function renderAlertsMenu(ctx: Context) {
   const alertProjects = projects.filter((project) => project.status === "live" || project.status === "minting");
 
   let msg = `🔔 *Kiwi Alerts*\n\n`;
+  const deployOn = dbService.isDeployAlertsEnabled(ctx.from?.id ?? 0);
+  msg += `🆕 Deployment auto-alerts: ${deployOn ? "🔔 *ON* — you'll be DMed new contract drops" : "🔕 *MUTED* — no deployment DMs"}\n`;
+  msg += `${deployOn ? "Tap 🔕 Mute below to stop." : "Tap 🔔 Unmute below to re-enable."}\n\n`;
   if (alertProjects.length === 0) {
     msg += `No live or minting launches right now. Kiwi will surface them here as soon as a project flips into an active launch stage.`;
   } else {
@@ -1791,7 +1840,15 @@ async function renderAlertsMenu(ctx: Context) {
     }
   }
 
-  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  const kb = new InlineKeyboard();
+  kb.text(deployOn ? "🔕 Mute Deployment Alerts" : "🔔 Unmute Deployment Alerts", "deploy_alert_toggle")
+    .row()
+    .text("🔔 Alerts", "menu_alerts")
+    .text("📊 Status", "menu_status")
+    .row()
+    .text("🔙 Main Menu", "menu_main");
+
+  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
 }
 
 async function renderStatusMenu(ctx: Context) {

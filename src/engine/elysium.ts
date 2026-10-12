@@ -60,6 +60,63 @@ export interface NativeTransfer {
   blockNumber: bigint;
 }
 
+export interface DeploymentMeta {
+  address: Address;
+  kind: "token" | "nft" | "contract" | "unknown";
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  totalSupplyFormatted: string | null;
+  bytecodeSize: number | null;
+  label: string;
+}
+
+const erc20MetaAbi = [
+  { name: "name", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { name: "symbol", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { name: "decimals", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { name: "totalSupply", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+] as const;
+
+const erc721MetaAbi = [
+  { name: "name", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { name: "symbol", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+] as const;
+
+export async function getDeploymentMeta(address: Address, chainKey: string = ELYSIUM.key): Promise<DeploymentMeta> {
+  const { client } = clientFor(chainKey);
+  let bytecodeSize: number | null = null;
+  try { const code = await client.getBytecode({ address }); bytecodeSize = code ? (code.length - 2)/2 : 0; } catch { bytecodeSize = null; }
+  try {
+    const [name, symbol, decimals, supply] = await Promise.all([
+      client.readContract({ address, abi: erc20MetaAbi, functionName: "name" }).catch(()=>null),
+      client.readContract({ address, abi: erc20MetaAbi, functionName: "symbol" }).catch(()=>null),
+      client.readContract({ address, abi: erc20MetaAbi, functionName: "decimals" }).catch(()=>null),
+      client.readContract({ address, abi: erc20MetaAbi, functionName: "totalSupply" }).catch(()=>null),
+    ]);
+    if (typeof name === "string" && typeof symbol === "string" && decimals !== null) {
+      const dec = Number(decimals);
+      let supplyFmt: string | null = null;
+      try { if (supply !== null) supplyFmt = formatEther(supply as bigint).slice(0,14); } catch {}
+      const label = "🪙 Token \u2022 " + name + " (" + symbol + ")" + (Number.isFinite(dec) ? " \u2022 " + dec + " decimals" : "");
+      return { address, kind: "token", name, symbol, decimals: dec, totalSupplyFormatted: supplyFmt, bytecodeSize, label };
+    }
+  } catch {}
+  try {
+    const [name, symbol] = await Promise.all([
+      client.readContract({ address, abi: erc721MetaAbi, functionName: "name" }).catch(()=>null),
+      client.readContract({ address, abi: erc721MetaAbi, functionName: "symbol" }).catch(()=>null),
+    ]);
+    if (typeof name === "string" && typeof symbol === "string" && name && symbol) {
+      return { address, kind: "nft", name, symbol, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "🖼️ NFT \u2022 " + name + " (" + symbol + ")" };
+    }
+  } catch {}
+  if (bytecodeSize === 0) return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "❓ EOA / empty" };
+  if (bytecodeSize !== null && bytecodeSize > 0) return { address, kind: "contract", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "📄 Contract \u2022 " + bytecodeSize + " bytes" };
+  return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "📄 Contract" };
+}
+
+
 function clientFor(chainKey: string) {
   const cfg = getChainConfig(chainKey);
   return {

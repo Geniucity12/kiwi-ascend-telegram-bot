@@ -1,9 +1,9 @@
-import type { Bot } from "grammy";
+import { InlineKeyboard, type Bot } from "grammy";
 import { dbService } from "../db";
 import { fetchLaunchProjects, getLaunchStatusLabel, mintWindowLine, getMintWindowState, type LaunchProject, type LaunchStatus } from "../data/launches";
 import { marketplaceService } from "../engine/marketplace";
 import { getChainConfig, ELYSIUM, ALERT_POLL_INTERVAL_MS } from "../config";
-import { getChainHealth, scanRecentDeployments, getWalletActivity } from "../engine/elysium";
+import { getChainHealth, scanRecentDeployments, getDeploymentMeta, getWalletActivity } from "../engine/elysium";
 import type { Address } from "viem";
 
 /**
@@ -84,6 +84,23 @@ async function checkMintWindows() {
 }
 
 /** Surface fresh on-chain contract deployments on Elysium. */
+/**
+ * DM only users who have deployment alerts enabled.
+ * Sends a keyboard so they can mute/unmute inline.
+ */
+async function notifyDeployUsers(text: string) {
+  if (!bot) return;
+  const userIds = dbService.getDeployAlertUserIds();
+  for (const userId of userIds) {
+    const kb = new InlineKeyboard().text("🔕 Mute Deployment Alerts", "deploy_alert_toggle_off").row().text("🆕 Fresh Deployments", "menu_deployments");
+    try {
+      await bot.api.sendMessage(userId, text, { parse_mode: "Markdown", reply_markup: kb });
+    } catch {
+      // User may have blocked the bot; ignore.
+    }
+  }
+}
+
 async function checkElysiumDeployments() {
   try {
     await getChainHealth(ELYSIUM.key);
@@ -106,14 +123,20 @@ async function checkElysiumDeployments() {
   }
   if (!initialized) return; // first tick only seeds
   if (fresh.length === 0) return;
-  const lines = fresh.slice(0, 5).map(
-    (d) =>
-      `• \`${d.address.slice(0, 10)}…\` by \`${d.deployer.slice(0, 10)}…\` (block ${d.blockNumber})`
+  const enriched = await Promise.all(
+    fresh.slice(0, 5).map(async (d) => {
+      let label = "📄 Contract";
+      try {
+        const meta = await getDeploymentMeta(d.address, ELYSIUM.key);
+        label = meta.label;
+      } catch { /* keep default */ }
+      return `${label}\n\`${d.address}\`\n  by \`${d.deployer}\` • block ${d.blockNumber}\n  [tx](${ELYSIUM.explorerUrl}/tx/${d.txHash}) • [address](${ELYSIUM.explorerUrl}/address/${d.address})`;
+    })
   );
-  await notifyUsers(
+  await notifyDeployUsers(
     `🆕 *Fresh Elysium deployments* (${fresh.length} new)\n\n` +
-      lines.join("\n") +
-      `\n\nTrack one: \`/watch <0x…> [label]\`\nExplorer: ${ELYSIUM.explorerUrl}`
+      enriched.join("\n\n") +
+      `\n\nTrack one: \`/watch <0x…> [label]\`\nStop these: \`/mutedeploys\` — turn back on: \`/unmutedeploys\``
   );
 }
 
