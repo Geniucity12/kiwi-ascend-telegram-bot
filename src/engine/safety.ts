@@ -2,8 +2,8 @@ import { createPublicClient, http, type Address, type Hex, parseAbi, encodeFunct
 import { getChainConfig, ELYSIUM } from "../config";
 
 /**
- * Token safety engine — Elly-style pre-buy checks for Elysium (and any EVM chain).
- * Simulates buy/sell FROM the user's own wallet with their real amount.
+ * Token safety engine — pre-buy checks for Elysium (and any EVM chain).
+ * Simulates sell FROM the user's own wallet with their real amount.
  * Flags honeypot, taxes, owner powers, upgradeable proxies, pullable liquidity.
  */
 

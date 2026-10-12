@@ -333,7 +333,7 @@ export function registerHandlers(bot: Bot) {
     if (!userId) { await ctx.reply("No wallet."); return; }
     const pk = walletManager.exportPrivateKey(userId);
     if (!pk) { await ctx.reply("No wallet found."); return; }
-    // Elly does this — users expect it. Warn, don't block.
+    // Warn before revealing the key; users expect export. Warn, don't block.
     await ctx.reply(
       `🔑 *Private Key Export*\n\n\`${pk}\`\n\n⚠️ Anyone with this key controls the wallet. Never share it. Delete this message after importing to MetaMask.`,
       { parse_mode: "Markdown" }
@@ -1909,7 +1909,7 @@ async function renderSafetyCard(ctx: Context, token: Address) {
 }
 
 async function renderSafetyInfo(ctx: Context) {
-  await ctx.reply(`🛡️ *Kiwi Safety Engine*\n\nBefore every buy Kiwi simulates FROM your wallet with your real amount (like Elly).\n\nFlags: honeypot (sell revert), owner/mint, blacklist, upgradeable proxy.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  await ctx.reply(`🛡️ *Kiwi Safety Engine*\n\nBefore every buy Kiwi simulates FROM your wallet with your real amount.\n\nFlags: honeypot (sell revert), owner/mint, blacklist, upgradeable proxy.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
 }
 
 async function _missingTradingHandlersStub() {} // keep file valid while inserting
