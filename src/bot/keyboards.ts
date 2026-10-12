@@ -41,8 +41,8 @@ export function makePortfolioKeyboard(): InlineKeyboard {
 }
 export function makeTokenCardKeyboard(token: string): InlineKeyboard {
   return new InlineKeyboard()
-    .text("Buy 0.01 HYPE", `tok_buy_${token}_0.01`).text("Buy 0.05 HYPE", `tok_buy_${token}_0.05`).row()
-    .text("Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("Buy X", `tok_buyx_${token}`).row()
+    .text("Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("Buy 0.5 HYPE", `tok_buy_${token}_0.5`).row()
+    .text("Buy 1 HYPE", `tok_buy_${token}_1`).text("Buy X", `tok_buyx_${token}`).row()
     .text("Sell 25%", `tok_sell_${token}_25`).text("Sell 50%", `tok_sell_${token}_50`).text("Sell 100%", `tok_sell_${token}_100`).row()
     .text("\uD83D\uDEE1 Safety", `tok_safety_${token}`).text("\uD83D\uDD04 Refresh", `tok_card_${token}`).row()
     .text("\uD83D\uDC40 Watch", `watch_add_${token}`).text("\uD83D\uDD19 Main Menu", "menu_main");

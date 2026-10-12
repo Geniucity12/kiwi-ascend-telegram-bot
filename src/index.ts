@@ -30,21 +30,25 @@ async function main() {
     console.error("Bot error:", err.error);
   });
 
-  // Sync the Telegram autocomplete menu (replaces any stale demo list).
+  // Sync the Telegram autocomplete menu — Kiwi-native, not a copy. Kept lean: hunter feed + Kiwi card + your settings.
   const kiwiCommands = [
     { command: "start", description: "Open Kiwi dashboard" },
-    { command: "wallet", description: "Manage trading wallet & withdraw" },
-    { command: "launch", description: "Tracked Ascend/Elysium launches" },
+    { command: "wallet", description: "Your HYPE wallet & withdraw" },
+    { command: "launch", description: "Tracked Ascend launches" },
     { command: "mints", description: "Mint-window countdowns" },
-    { command: "elysium", description: "Live Elysium chain health" },
-    { command: "deployments", description: "Fresh on-chain deployments" },
+    { command: "elysium", description: "Live Elysium chain (99801)" },
+    { command: "deployments", description: "Fresh deployments — hunter feed" },
     { command: "watch", description: "Track a wallet — 0x... [label]" },
-    { command: "watchlist", description: "Your watched addresses" },
-    { command: "safety", description: "Safety check for a token" },
-    { command: "portfolio", description: "Portfolio PnL & share card" },
-    { command: "alerts", description: "Active launch alerts" },
-    { command: "status", description: "Bot & data status" },
-    { command: "help", description: "How to use Kiwi" },
+    { command: "watchlist", description: "Your tracked addresses" },
+    { command: "buy", description: "Buy a token — 0x... amount" },
+    { command: "sell", description: "Sell a token — 0x... 25/50/100" },
+    { command: "safety", description: "Kiwi Safety Engine check" },
+    { command: "portfolio", description: "What you hold — PnL & share card" },
+    { command: "slippage", description: "Your price tolerance (1–50%)" },
+    { command: "copy", description: "Kiwi Auto-Follow — up to 5 wallets (V2)" },
+    { command: "alerts", description: "Deployment & launch alerts" },
+    { command: "status", description: "Bot & chain status" },
+    { command: "help", description: "How Kiwi works" },
   ];
 
   bot.start({

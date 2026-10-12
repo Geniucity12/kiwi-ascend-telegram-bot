@@ -211,14 +211,7 @@ export function registerHandlers(bot: Bot) {
     else await renderSafetyInfo(ctx);
   });
 
-  bot.command("tokens", async (ctx) => {
-    await renderTokensMenu(ctx);
-  });
-
-  bot.command("positions", async (ctx) => {
-    await renderPortfolioMenu(ctx);
-  });
-
+  // Kiwi-native trader settings — not a clone. /deployments is your hunter feed, /portfolio is your hold view.
   bot.command("slippage", async (ctx) => {
     const arg = ctx.message?.text?.split(/\s+/)[1];
     const uid = ctx.from?.id;
@@ -238,7 +231,7 @@ export function registerHandlers(bot: Bot) {
 
   bot.command("copy", async (ctx) => {
     await ctx.reply(
-      `👥 *Copy Trading — coming in V2*\n\nFollow up to 5 wallets. When they buy, you buy.\nEvery copied buy is safety-checked from your wallet first, and copies use tight slippage so it's harder for anyone to trade just ahead of followers.\n\nPaper mode until DEX is live. Roadmap: hunter → trader → copy. Stay tuned — \`/watch\` already tracks any wallet live.`,
+      `👥 *Kiwi Auto-Follow — V2 on the roadmap*\n\nKiwi will let you mirror up to 5 wallets on Elysium. Every mirrored buy runs the Safety Engine from *your* wallet first, and uses your slippage setting to keep frontruns harder.\n\nTestnet is paper mode until the DEX is live. For now \`/watch\` already tracks any wallet live — Auto-Follow builds on top.`,
       { parse_mode: "Markdown", reply_markup: mainKeyboard }
     );
   });
@@ -1939,41 +1932,6 @@ async function renderStatusMenu(ctx: Context) {
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
 }
 
-async function renderTokensMenu(ctx: Context) {
-  await ctx.reply(`🔍 Scanning Elysium for tokens you can trade right now…`, { parse_mode: "Markdown" });
-  let deployments;
-  try {
-    deployments = await scanRecentDeployments(40, ELYSIUM.key);
-  } catch (e: any) {
-    await ctx.reply(`⚠️ Scan failed: ${e?.message ?? "RPC error"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
-    return;
-  }
-  const metas: { addr: Address; meta: any; deployer: Address; blockNumber: bigint }[] = [];
-  for (const d of deployments.slice(0, 10)) {
-    try {
-      const meta = await getDeploymentMeta(d.address, ELYSIUM.key);
-      if (meta.kind === "token") metas.push({ addr: d.address, meta, deployer: d.deployer, blockNumber: d.blockNumber });
-    } catch {}
-  }
-  if (metas.length === 0) {
-    await ctx.reply(
-      `📋 *Tokens on Kiwi*\n\nNo token deployments found in the last 40 blocks. Try \`/deployments\` for all contracts, or paste any \`0x…\` to open its card.`,
-      { parse_mode: "Markdown", reply_markup: mainKeyboard }
-    );
-    return;
-  }
-  let msg = `📋 *Tokens on Kiwi* — tokens you can trade right now\n\n`;
-  const kb = new InlineKeyboard();
-  for (const m of metas.slice(0, 8)) {
-    const supply = m.meta.totalSupplyFormatted ? `${m.meta.totalSupplyFormatted}` : "n/a";
-    msg += `\`$${m.meta.symbol ?? "TOKEN"}\` · ${m.meta.name ?? "Unknown"} — \`${m.addr.slice(0, 10)}…\`  • supply ${supply}\n`;
-    kb.text(`$${m.meta.symbol ?? m.addr.slice(0, 6)}`, `tok_card_${m.addr}`).row();
-  }
-  msg += `\nTap a token to open its card. Paste any \`0x…\` for any token.`;
-  kb.text("🆕 Fresh Deployments", "menu_deployments").row().text("🔙 Main Menu", "menu_main");
-  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
-}
-
 async function renderTokenCard(ctx: Context, token: Address) {
   const userId = ctx.from?.id;
   const w = userId ? walletManager.getUserWallet(userId) : undefined;
@@ -2033,7 +1991,7 @@ async function renderSafetyCard(ctx: Context, token: Address) {
 
 async function renderSafetyInfo(ctx: Context) {
   await ctx.reply(
-    `🛡️ *Kiwi Safety Engine*\n\nKiwi simulates every token before you buy. If it looks like a scam, Kiwi stops and asks first.\n\nFlags: honeypot (sell revert), owner/mint, blacklist, upgradeable proxy. Checks catch common scams, but can't guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
+    `🛡️ *Kiwi Safety Engine*\n\nKiwi runs a pre-buy simulation FROM your wallet with your real amount. If it flags a scam, Kiwi blocks or asks you to confirm first. Scans honeypot (sell revert), owner/mint, blacklist, and upgradeable proxy — no guesswork. Checks catch common traps, but no scan can guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
     { parse_mode: "Markdown", reply_markup: mainKeyboard }
   );
 }
@@ -2231,16 +2189,14 @@ async function renderHelpMenu(ctx: Context) {
   msg += `• \`/unwatch <id>\` — Stop tracking\n`;
   msg += `\n`;
   msg += `*Trading (Elysium HYPE):*\n`;
-  msg += `• Paste any \`0x…\` → safety card + Buy/Sell\n`;
-  msg += `• \`/buy <0x…> <HYPE>\` / \`/sell <0x…> [25|50|100]\`\n`;
-  msg += `• \`/tokens\` — tokens you can trade right now\n`;
-  msg += `• \`/positions\` — what you hold, with PnL\n`;
+  msg += `• Paste any \`0x…\` → Kiwi card + Safety → Buy/Sell\n`;
+  msg += `• \`/buy <0x…> <HYPE>\` / \`/sell <0x…> [25|50|100]\` (+ Buy X custom)\n`;
+  msg += `• \`/safety <0x…>\` — honeypot/mint/blacklist/proxy — score 0–100\n`;
   msg += `• \`/portfolio\` — results, history and a share card\n`;
-  msg += `• \`/copy\` — follow another wallet's trades (V2)\n`;
-  msg += `• \`/slippage\` — how much price movement you'll accept\n`;
-  msg += `• \`/safety <0x…>\` — honeypot/mint/blacklist/proxy\n`;
-  msg += `\n*Safety*\n`;
-  msg += `Kiwi simulates every token before you buy. If it looks like a scam, Kiwi stops and asks first. Checks catch common scams, but can't guarantee a token is safe.\n`;
+  msg += `• \`/slippage\` — your price tolerance (1–50%)\n`;
+  msg += `• \`/copy\` — Kiwi Auto-Follow up to 5 wallets (V2)\n`;
+  msg += `\n*Safety — Kiwi engine*\n`;
+  msg += `Pre-buy simulation FROM your wallet (your real amount). Flags honeypot, mint, blacklist, proxy. If it flags a scam, Kiwi blocks or asks you to confirm. No scan can guarantee safety.\n`;
   msg += `\n*Your funds*\n`;
   msg += `\`/withdraw\` sends HYPE out at any time. \`/export\` shows your private key: never share it with anyone.\n`;
   msg += `\n*Wallet:*\n`;
