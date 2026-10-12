@@ -7,7 +7,7 @@ import { marketplaceService } from "../engine/marketplace";
 import { minterService } from "../engine/minter";
 import { openSeaService } from "../engine/opensea";
 import { getChainHealth, scanRecentDeployments, getDeploymentMeta, getWalletActivity } from "../engine/elysium";
-import { analyzeToken, formatSafetyReport } from "../engine/safety";
+import { analyzeToken, formatSafetyReport, formatSafetyInline } from "../engine/safety";
 import { tradingService } from "../engine/trading";
 import {
   mainKeyboard,
@@ -20,6 +20,7 @@ import {
   makePortfolioKeyboard,
   makeTokenCardKeyboard,
   makeSafetyKeyboard,
+  makeSlippageKeyboard,
 } from "./keyboards";
 import { formatEther, parseEther, parseUnits, type Address, type Hex } from "viem";
 
@@ -208,6 +209,38 @@ export function registerHandlers(bot: Bot) {
     const arg = ctx.message?.text?.split(/\s+/)[1] ?? "";
     if (/^0x[a-fA-F0-9]{40}$/.test(arg)) await renderSafetyCard(ctx, arg as Address);
     else await renderSafetyInfo(ctx);
+  });
+
+  bot.command("tokens", async (ctx) => {
+    await renderTokensMenu(ctx);
+  });
+
+  bot.command("positions", async (ctx) => {
+    await renderPortfolioMenu(ctx);
+  });
+
+  bot.command("slippage", async (ctx) => {
+    const arg = ctx.message?.text?.split(/\s+/)[1];
+    const uid = ctx.from?.id;
+    if (!uid) return;
+    if (arg) {
+      const pct = Number(arg);
+      if (!Number.isFinite(pct) || pct <= 0 || pct > 50) {
+        await ctx.reply("Usage: `/slippage 1` or `/slippage 10` (percent 0.1–50).", { parse_mode: "Markdown" });
+        return;
+      }
+      dbService.setSlippageBps(uid, Math.round(pct * 100));
+      await ctx.reply(`✅ Slippage set to \`${pct}%\``, { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(dbService.getSlippageBps(uid)) });
+      return;
+    }
+    await renderSlippageMenu(ctx);
+  });
+
+  bot.command("copy", async (ctx) => {
+    await ctx.reply(
+      `👥 *Copy Trading — coming in V2*\n\nFollow up to 5 wallets. When they buy, you buy.\nEvery copied buy is safety-checked from your wallet first, and copies use tight slippage so it's harder for anyone to trade just ahead of followers.\n\nPaper mode until DEX is live. Roadmap: hunter → trader → copy. Stay tuned — \`/watch\` already tracks any wallet live.`,
+      { parse_mode: "Markdown", reply_markup: mainKeyboard }
+    );
   });
 
   bot.command("help", async (ctx) => {
@@ -525,9 +558,24 @@ export function registerHandlers(bot: Bot) {
     ctx.answerCallbackQuery().catch(() => {});
     await handleTokenBuy(ctx, ctx.match[1] as Address, ctx.match[2]);
   });
+  bot.callbackQuery(/^tok_buyx_(0x[a-fA-F0-9]{40})$/i, async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    const uid = ctx.from?.id;
+    if (!uid) return;
+    userStates[uid] = { step: "awaiting_buyx_amount", data: { token: ctx.match[1] } };
+    await ctx.reply(`💰 Send HYPE amount for \`${ctx.match[1].slice(0, 10)}…\` (e.g. \`0.2\` or \`1.5\`):`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  });
   bot.callbackQuery(/^tok_sell_(0x[a-fA-F0-9]{40})_(25|50|100)$/i, async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
     await handleTokenSell(ctx, ctx.match[1] as Address, ctx.match[2]);
+  });
+  bot.callbackQuery(/^slip_set_(\d+)$/i, async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    const uid = ctx.from?.id;
+    if (!uid) return;
+    const bps = Number(ctx.match[1]);
+    dbService.setSlippageBps(uid, bps);
+    await ctx.reply(`✅ Slippage set to \`${bps / 100}%\` — Kiwi will use this for every buy/sell so it's harder to front-run.`, { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(dbService.getSlippageBps(uid)) });
   });
 
   bot.callbackQuery("menu_help", async (ctx) => {
@@ -726,6 +774,20 @@ export function registerHandlers(bot: Bot) {
         return;
       }
       await executeListingCancellation(ctx, state.data.listingId);
+      return;
+    }
+
+    if (state?.step === "awaiting_buyx_amount") {
+      const raw = text.trim();
+      const amt = Number(raw);
+      if (!Number.isFinite(amt) || amt <= 0 || amt > 10000) {
+        await ctx.reply("❌ Send a number like `0.2`, `0.5`, or `1` (HYPE).", { parse_mode: "Markdown" });
+        return;
+      }
+      delete userStates[userId];
+      const { token } = state.data ?? {};
+      if (!/^0x[a-fA-F0-9]{40}$/.test(token ?? "")) { await ctx.reply("Session expired. Paste the token again.", { parse_mode: "Markdown" }); return; }
+      await handleTokenBuy(ctx, token as Address, String(amt));
       return;
     }
 
@@ -1877,6 +1939,41 @@ async function renderStatusMenu(ctx: Context) {
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
 }
 
+async function renderTokensMenu(ctx: Context) {
+  await ctx.reply(`🔍 Scanning Elysium for tokens you can trade right now…`, { parse_mode: "Markdown" });
+  let deployments;
+  try {
+    deployments = await scanRecentDeployments(40, ELYSIUM.key);
+  } catch (e: any) {
+    await ctx.reply(`⚠️ Scan failed: ${e?.message ?? "RPC error"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    return;
+  }
+  const metas: { addr: Address; meta: any; deployer: Address; blockNumber: bigint }[] = [];
+  for (const d of deployments.slice(0, 10)) {
+    try {
+      const meta = await getDeploymentMeta(d.address, ELYSIUM.key);
+      if (meta.kind === "token") metas.push({ addr: d.address, meta, deployer: d.deployer, blockNumber: d.blockNumber });
+    } catch {}
+  }
+  if (metas.length === 0) {
+    await ctx.reply(
+      `📋 *Tokens on Kiwi*\n\nNo token deployments found in the last 40 blocks. Try \`/deployments\` for all contracts, or paste any \`0x…\` to open its card.`,
+      { parse_mode: "Markdown", reply_markup: mainKeyboard }
+    );
+    return;
+  }
+  let msg = `📋 *Tokens on Kiwi* — tokens you can trade right now\n\n`;
+  const kb = new InlineKeyboard();
+  for (const m of metas.slice(0, 8)) {
+    const supply = m.meta.totalSupplyFormatted ? `${m.meta.totalSupplyFormatted}` : "n/a";
+    msg += `\`$${m.meta.symbol ?? "TOKEN"}\` · ${m.meta.name ?? "Unknown"} — \`${m.addr.slice(0, 10)}…\`  • supply ${supply}\n`;
+    kb.text(`$${m.meta.symbol ?? m.addr.slice(0, 6)}`, `tok_card_${m.addr}`).row();
+  }
+  msg += `\nTap a token to open its card. Paste any \`0x…\` for any token.`;
+  kb.text("🆕 Fresh Deployments", "menu_deployments").row().text("🔙 Main Menu", "menu_main");
+  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
+}
+
 async function renderTokenCard(ctx: Context, token: Address) {
   const userId = ctx.from?.id;
   const w = userId ? walletManager.getUserWallet(userId) : undefined;
@@ -1888,11 +1985,37 @@ async function renderTokenCard(ctx: Context, token: Address) {
     await ctx.reply(`⚠️ Could not analyze token: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
     return;
   }
+  // Market lines — best-effort, paper-mode aware
+  let priceLine = `Price: n/a (paper mode — no DEX pool indexed yet)`;
+  let liquidityLine = `Liquidity: n/a (paper mode)`;
+  let supplyLine = `Supply: n/a`;
+  let slippagePct = "10%";
+  try {
+    if (userId) slippagePct = `${(dbService.getSlippageBps(userId) / 100).toFixed(0)}%`;
+  } catch {}
+  try {
+    const meta = await getDeploymentMeta(token, ELYSIUM.key);
+    if (meta.totalSupplyFormatted) supplyLine = `Supply: ${meta.totalSupplyFormatted}`;
+    else if (meta.kind === "token") supplyLine = `Supply: ${meta.name ?? ""} (${meta.symbol ?? ""})`;
+  } catch {}
+  // Try live quote if router is set — otherwise keep paper lines
+  try {
+    const { quoteBuy } = await import("../engine/trading");
+    const q = await quoteBuy(token, parseEther("0.01") as any);
+    const out = Number(q.amountOutWei) / 1e18;
+    if (out > 0) {
+      const perToken = 0.01 / out;
+      priceLine = `Price: ${perToken.toExponential(3)} HYPE`;
+      liquidityLine = `Liquidity: live pool (quote ok)`;
+    }
+  } catch {}
   let balLine = "";
   if (w) {
     try { const b = await tradingService.getTokenBalance(token, w.address as Address); balLine = `\n💼 Your balance: \`${b.formatted} ${b.symbol ?? ""}\``; } catch {}
   } else balLine = "\n💼 No wallet yet — create one to trade.";
-  const msg = `*Token Card* — \`${token}\`\n\n${formatSafetyReport(report)}${balLine}\n\n${report.safe ? "✅ Ready to buy — tap below." : "⚠️ Review flags before buying."}`;
+  const title = report.name && report.symbol ? `${report.name} ($${report.symbol})` : report.symbol ? `$${report.symbol}` : `Token \`${token.slice(0, 10)}…\``;
+  const inlineSafety = formatSafetyInline(report);
+  const msg = `*${title}*\n\`${token}\`\n\n${priceLine}\n${liquidityLine}\n${supplyLine}\nSlippage: ${slippagePct}\n\n${inlineSafety}${balLine}\n\n${formatSafetyReport(report)}\n\n${report.safe ? "✅ Ready to buy — tap below." : "⚠️ Review flags before buying."}`;
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: makeTokenCardKeyboard(token) });
 }
 
@@ -1909,7 +2032,20 @@ async function renderSafetyCard(ctx: Context, token: Address) {
 }
 
 async function renderSafetyInfo(ctx: Context) {
-  await ctx.reply(`🛡️ *Kiwi Safety Engine*\n\nBefore every buy Kiwi simulates FROM your wallet with your real amount.\n\nFlags: honeypot (sell revert), owner/mint, blacklist, upgradeable proxy.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  await ctx.reply(
+    `🛡️ *Kiwi Safety Engine*\n\nKiwi simulates every token before you buy. If it looks like a scam, Kiwi stops and asks first.\n\nFlags: honeypot (sell revert), owner/mint, blacklist, upgradeable proxy. Checks catch common scams, but can't guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
+    { parse_mode: "Markdown", reply_markup: mainKeyboard }
+  );
+}
+
+async function renderSlippageMenu(ctx: Context) {
+  const uid = ctx.from?.id;
+  if (!uid) return;
+  const bps = dbService.getSlippageBps(uid);
+  await ctx.reply(
+    `⚙️ *Slippage* — how much price movement you'll accept\n\nCurrent: \`${bps / 100}%\` — Kiwi will use this for every buy/sell so it's harder to front-run.\n\nPick one:`,
+    { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(bps) }
+  );
 }
 
 async function _missingTradingHandlersStub() {} // keep file valid while inserting
@@ -2097,15 +2233,20 @@ async function renderHelpMenu(ctx: Context) {
   msg += `*Trading (Elysium HYPE):*\n`;
   msg += `• Paste any \`0x…\` → safety card + Buy/Sell\n`;
   msg += `• \`/buy <0x…> <HYPE>\` / \`/sell <0x…> [25|50|100]\`\n`;
+  msg += `• \`/tokens\` — tokens you can trade right now\n`;
+  msg += `• \`/positions\` — what you hold, with PnL\n`;
+  msg += `• \`/portfolio\` — results, history and a share card\n`;
+  msg += `• \`/copy\` — follow another wallet's trades (V2)\n`;
+  msg += `• \`/slippage\` — how much price movement you'll accept\n`;
   msg += `• \`/safety <0x…>\` — honeypot/mint/blacklist/proxy\n`;
-  msg += `• \`/portfolio\` — PnL, win rate, share card\n`;
-  msg += `• \`/export\` — export key to MetaMask\n`;
-  msg += `\n`;
-  msg += `*Wallet:*\n`;
+  msg += `\n*Safety*\n`;
+  msg += `Kiwi simulates every token before you buy. If it looks like a scam, Kiwi stops and asks first. Checks catch common scams, but can't guarantee a token is safe.\n`;
+  msg += `\n*Your funds*\n`;
+  msg += `\`/withdraw\` sends HYPE out at any time. \`/export\` shows your private key: never share it with anyone.\n`;
+  msg += `\n*Wallet:*\n`;
   msg += `• \`/wallet\` — Address, balance & withdraw\n`;
-  msg += `\n`;
-  msg += `*Elysium note:*\n`;
-  msg += `Cross-chain secondary markets (OpenSea) are archived in Elysium-only mode. Use /launch and /deployments for Elysium-native discovery.\n`;
+  msg += `\n*Elysium note:*\n`;
+  msg += `Cross-chain secondary markets are archived in Elysium-only mode. Use /launch and /deployments for Elysium-native discovery.\n`;
   msg += `\n`;
   msg += `*Kiwi focus:*\n`;
   msg += `- Live Elysium launch & deployment monitoring\n`;

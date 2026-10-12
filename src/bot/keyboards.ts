@@ -40,10 +40,25 @@ export function makePortfolioKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("\uD83D\uDD04 Refresh", "portfolio_refresh").text("\uD83D\uDCE4 Share Card", "portfolio_share").row().text("\uD83D\uDD19 Main Menu", "menu_main");
 }
 export function makeTokenCardKeyboard(token: string): InlineKeyboard {
-  return new InlineKeyboard().text("\uD83D\uDFE2 Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("\uD83D\uDFE2 Buy 0.5 HYPE", `tok_buy_${token}_0.5`).row().text("\uD83D\uDFE2 Buy 1 HYPE", `tok_buy_${token}_1`).text("\uD83D\uDD0D Safety Check", `tok_safety_${token}`).row().text("\uD83D\uDD34 Sell 25%", `tok_sell_${token}_25`).text("\uD83D\uDD34 Sell 50%", `tok_sell_${token}_50`).text("\uD83D\uDD34 Sell 100%", `tok_sell_${token}_100`).row().text("\uD83D\uDC40 Watch", `watch_add_${token}`).text("\uD83D\uDD19 Main Menu", "menu_main");
+  return new InlineKeyboard()
+    .text("Buy 0.01 HYPE", `tok_buy_${token}_0.01`).text("Buy 0.05 HYPE", `tok_buy_${token}_0.05`).row()
+    .text("Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("Buy X", `tok_buyx_${token}`).row()
+    .text("Sell 25%", `tok_sell_${token}_25`).text("Sell 50%", `tok_sell_${token}_50`).text("Sell 100%", `tok_sell_${token}_100`).row()
+    .text("\uD83D\uDEE1 Safety", `tok_safety_${token}`).text("\uD83D\uDD04 Refresh", `tok_card_${token}`).row()
+    .text("\uD83D\uDC40 Watch", `watch_add_${token}`).text("\uD83D\uDD19 Main Menu", "menu_main");
 }
 export function makeSafetyKeyboard(token: string): InlineKeyboard {
-  return new InlineKeyboard().text("\uD83D\uDFE2 Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("\uD83D\uDD34 Sell 25%", `tok_sell_${token}_25`).row().text("\uD83D\uDD19 Token Card", `tok_card_${token}`).text("\uD83D\uDD19 Main Menu", "menu_main");
+  return new InlineKeyboard().text("Buy 0.1 HYPE", `tok_buy_${token}_0.1`).text("Sell 25%", `tok_sell_${token}_25`).row().text("\uD83D\uDD19 Token Card", `tok_card_${token}`).text("\uD83D\uDD19 Main Menu", "menu_main");
+}
+export function makeSlippageKeyboard(currentBps: number): InlineKeyboard {
+  const opts = [100, 300, 500, 1000, 2000];
+  const kb = new InlineKeyboard();
+  for (const bps of opts) {
+    const label = `${bps / 100}%${bps === currentBps ? " ✅" : ""}`;
+    kb.text(label, `slip_set_${bps}`);
+  }
+  kb.row().text("\uD83D\uDD19 Main Menu", "menu_main");
+  return kb;
 }
 export function makeChainKeyboard(selected: string): InlineKeyboard {
   const kb = new InlineKeyboard();

@@ -16,6 +16,7 @@ export interface UserRow {
   selected_chain: string;
   created_at: string;
   deploy_alerts_enabled?: boolean;
+  slippage_bps?: number;
 }
 
 /** Encrypted custodial key material (AES-256-GCM hex). Never leaves the host. */
@@ -145,7 +146,7 @@ class JsonStore {
         const raw = readFileSync(this.file, "utf8");
         const parsed = JSON.parse(raw) as Partial<Schema>;
         this.data = { ...emptySchema(), ...parsed } as Schema;
-        for (const uid of Object.keys((this.data as any).users ?? {})) { const u=(this.data as any).users[uid]; if(u && u.deploy_alerts_enabled===undefined) u.deploy_alerts_enabled=true; }
+        for (const uid of Object.keys((this.data as any).users ?? {})) { const u=(this.data as any).users[uid]; if(u && u.deploy_alerts_enabled===undefined) u.deploy_alerts_enabled=true; if(u && u.slippage_bps===undefined) u.slippage_bps=1000; }
       }
     } catch (err) {
       console.error("Failed to load DB, starting fresh:", err);
@@ -532,6 +533,18 @@ export const dbService = {
   getDeployAlertUserIds(): number[] {
     const users = store.schema.users as Record<number, UserRow>;
     return Object.keys(users).map(Number).filter((id) => (users[id] as any).deploy_alerts_enabled !== false);
+  },
+
+  getSlippageBps(userId: number): number {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u || u.slippage_bps === undefined) return 1000;
+    return u.slippage_bps;
+  },
+  setSlippageBps(userId: number, bps: number): void {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u) return;
+    u.slippage_bps = Math.max(10, Math.min(5000, Math.round(bps)));
+    store.save();
   },
 };
 

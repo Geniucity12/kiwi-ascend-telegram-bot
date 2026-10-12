@@ -155,6 +155,16 @@ export function formatSafetyReport(r: SafetyReport): string {
   lines.push(`Honeypot: ${r.checks.honeypot ? "YES 🔴" : "no ✅"}`);
   if (r.flags.length) { lines.push(""); lines.push("Flags:"); for (const f of r.flags) lines.push(`• ${f}`); }
   lines.push("");
-  lines.push(`Tax: ?% (DEX-dependent — confirmed with real buy/sell simulation when amount is provided)`);
+  const buyTax = r.checks.buyTaxPct !== null ? `${r.checks.buyTaxPct}%` : "0%";
+  const sellTax = r.checks.sellTaxPct !== null ? `${r.checks.sellTaxPct}%` : "0%";
+  lines.push(`Tax: ${buyTax} / ${sellTax} (simulated from your wallet; no DEX = 0% default)`);
+  lines.push(`Checks catch common scams, but can't guarantee a token is safe.`);
   return lines.join("\n");
+}
+export function formatSafetyInline(r: SafetyReport): string {
+  const n = r.flags.length;
+  const buyTax = r.checks.buyTaxPct !== null ? `${r.checks.buyTaxPct}%` : "0%";
+  const sellTax = r.checks.sellTaxPct !== null ? `${r.checks.sellTaxPct}%` : "0%";
+  const icon = r.checks.honeypot ? "🔴" : n > 0 ? "⚠️" : "✅";
+  return `${icon} Safety: ${n} warning${n === 1 ? "" : "s"} · Tax ${buyTax} / ${sellTax}`;
 }
