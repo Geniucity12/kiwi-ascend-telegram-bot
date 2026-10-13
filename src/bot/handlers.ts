@@ -887,9 +887,10 @@ export function registerHandlers(bot: Bot) {
     }
 
     if (state?.step === "awaiting_import_key") {
-      const k = text.trim();
+      const raw = text.trim().replace(/\s+/g, "");
+      const k = raw.startsWith("0x") || raw.startsWith("0X") ? raw : `0x${raw}`;
       if (!/^0x[0-9a-fA-F]{64}$/.test(k)) {
-        await ctx.reply("❌ Invalid key — need 64 hex chars after `0x...`. Try again or `/cancel`.", { parse_mode: "Markdown" });
+        await ctx.reply(`❌ Invalid key — got \`${raw.slice(0, 12)}…${raw.slice(-6)}\` (${raw.replace(/^0x/i, "").length} chars). Need exactly **64 hex chars**, with or without \`0x\`. Try again or \`/cancel\`.`, { parse_mode: "Markdown" });
         return;
       }
       delete userStates[userId];
@@ -2344,9 +2345,10 @@ async function handleExportKey(ctx: Context) {
 
 async function handleWalletImport(ctx: Context, raw: string) {
   const userId = ctx.from?.id; if (!userId) return;
-  const k = raw.trim();
+  const cleaned = raw.trim().replace(/\s+/g, "");
+  const k = cleaned.startsWith("0x") || cleaned.startsWith("0X") ? cleaned : `0x${cleaned}`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(k)) {
-    await ctx.reply("❌ Invalid key — need 64 hex chars after `0x...`.", { parse_mode: "Markdown" });
+    await ctx.reply(`❌ Invalid key — got \`${cleaned.slice(0, 12)}…${cleaned.slice(-6)}\` (${cleaned.replace(/^0x/i, "").length} chars). Need exactly **64 hex chars**, with or without \`0x\`.`, { parse_mode: "Markdown" });
     return;
   }
   try {

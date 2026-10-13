@@ -58,9 +58,10 @@ export const walletManager = {
     return { address: account.address };
   },
   importWallet(userId: number, privateKey: string): { address: Address } {
-    let pk = privateKey.trim();
-    if (!pk.startsWith("0x")) pk = "0x" + pk;
-    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error("Invalid private key — expected 64 hex chars (0x...).");
+    let pk = privateKey.trim().replace(/\s+/g, "");
+    if (!pk.startsWith("0x") && !pk.startsWith("0X")) pk = "0x" + pk;
+    if (pk.startsWith("0X")) pk = "0x" + pk.slice(2);
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error(`Invalid private key — expected exactly 64 hex chars, with or without 0x (got ${pk.replace(/^0x/i, "").length}).`);
     const account = privateKeyToAccount(pk as Hex);
     dbService.setKey(userId, account.address, encrypt(pk));
     dbService.upsertUser(userId, account.address, getChainConfig("elysium").key);
