@@ -238,7 +238,7 @@ export function registerHandlers(bot: Bot) {
 
   bot.command("copy", async (ctx) => {
     await ctx.reply(
-      `👥 *Zensweep Auto-Follow — V2 on the roadmap*\n\nKiwi will let you mirror up to 5 wallets on Elysium. Every mirrored buy runs the Safety Engine from *your* wallet first, and uses your slippage setting to keep frontruns harder.\n\nTestnet is paper mode until the DEX is live. For now \`/watch\` already tracks any wallet live — Auto-Follow builds on top.`,
+      `👥 *Zensweep Auto-Follow — V2 on the roadmap*\n\nZensweep will let you mirror up to 5 wallets on Elysium. Every mirrored buy runs the Safety Engine from *your* wallet first, and uses your slippage setting to keep frontruns harder.\n\nTestnet is paper mode until the DEX is live. For now \`/watch\` already tracks any wallet live — Auto-Follow builds on top.`,
       { parse_mode: "Markdown", reply_markup: mainKeyboard }
     );
   });
@@ -1900,7 +1900,7 @@ async function handleWatchSubmit(ctx: Context, text: string) {
     const activity = await getWalletActivity(address as Address, 30, chain);
     dbService.updateWatchSnapshot(id, activity.balanceWei.toString(), activity.transfers.length);
     await ctx.reply(
-      `✅ *Watching* ${label ? `*${label}* ` : ""}\`${address}\` on ${getChainConfig(chain).name}.\n\n💰 Balance: \`${activity.balanceEth} ${activity.symbol}\`\n📦 Recent transfers: \`${activity.transfers.length}\`\n\nKiwi will DM you when it moves.`,
+      `✅ *Watching* ${label ? `*${label}* ` : ""}\`${address}\` on ${getChainConfig(chain).name}.\n\n💰 Balance: \`${activity.balanceEth} ${activity.symbol}\`\n📦 Recent transfers: \`${activity.transfers.length}\`\n\nZensweep will DM you when it moves.`,
       { parse_mode: "Markdown", reply_markup: mainKeyboard }
     );
   } catch (err: any) {
@@ -2035,7 +2035,7 @@ async function renderStatusMenu(ctx: Context) {
   msg += `🔐 Wallet status: ${user ? "connected" : "not connected"}\n`;
   msg += `📦 Tracked projects: ${kiwiLaunches.length}\n`;
   msg += `👀 Watched addresses: ${watches}\n`;
-  msg += `\nKiwi watches Elysium on-chain: fresh deployments, mint windows, and wallet movement.`;
+  msg += `\nZensweep watches Elysium on-chain: fresh deployments, mint windows, and wallet movement.`;
 
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
 }
@@ -2116,7 +2116,7 @@ async function renderSafetyCard(ctx: Context, token: Address) {
 
 async function renderSafetyInfo(ctx: Context) {
   await ctx.reply(
-    `🛡️ *Zensweep Safety Engine*\n\nKiwi runs a pre-buy simulation FROM your wallet with your real amount. If it flags a scam, Zensweep blocks or asks you to confirm first. Scans honeypot (sell revert), owner/mint, blacklist, and upgradeable proxy — no guesswork. Checks catch common traps, but no scan can guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
+    `🛡️ *Zensweep Safety Engine*\n\nZensweep runs a pre-buy simulation FROM your wallet with your real amount. If it flags a scam, Zensweep blocks or asks you to confirm first. Scans honeypot (sell revert), owner/mint, blacklist, and upgradeable proxy — no guesswork. Checks catch common traps, but no scan can guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
     { parse_mode: "Markdown", reply_markup: mainKeyboard }
   );
 }
