@@ -1,4 +1,4 @@
-# Kiwi
+# Zensweep
 
 Telegram bot for the Elysium network — launch tracking, deployment discovery, wallet monitoring, and HYPE-native trading.
 
@@ -6,7 +6,7 @@ Live bot: [@zensweep_bot](https://t.me/zensweep_bot) · Elysium Testnet (Chain I
 
 ## Overview
 
-Kiwi brings Elysium on-chain activity into Telegram. It scans for newly deployed contracts, tracks mint windows, monitors watched wallets, checks token safety before trading, and executes HYPE-native buys and sells — all without leaving a chat.
+Zensweep brings Elysium on-chain activity into Telegram. It scans for newly deployed contracts, tracks mint windows, monitors watched wallets, checks token safety before trading, and executes HYPE-native buys and sells — all without leaving a chat.
 
 Built for [Elysium by Kinetiq](https://elysium.kinetiq.xyz), an Arbitrum Orbit L2 settling to HyperEVM with HYPE as its native gas token.
 
@@ -64,7 +64,7 @@ All configuration is via environment variables (see .env.example):
 | FEE_PERCENTAGE | No | Fee fraction, e.g. 0.025 = 2.5% |
 | FEE_RECIPIENT_WALLET | No | Address that receives fees. If empty, trades are fee-free |
 | OPENSEA_API_KEY | No | Enables market features under /markets |
-| KIWI_LAUNCH_API_URL | No | Remote JSON feed for the launch board |
+| ZENSWEEP_LAUNCH_API_URL | No | Remote JSON feed for the launch board (alias: `KIWI_LAUNCH_API_URL` kept) |
 | ALERT_POLL_INTERVAL_MS | No | Alert scheduler interval in ms (default: 300000) |
 
 ## Usage
@@ -73,7 +73,7 @@ All configuration is via environment variables (see .env.example):
 
 | Command | Description |
 |---------|-------------|
-| /start | Open the Kiwi dashboard |
+| /start | Open the Zensweep dashboard |
 | /wallet | View address, balance, and wallet actions |
 | /launch | Browse tracked launches |
 | /mints | View mint-window countdowns |
@@ -143,10 +143,10 @@ The bot uses long polling — no webhook or public port required.
 2. Create a new Railway project from the repository.
 3. Add environment variables in the dashboard.
 4. Set the start command to `npm run build && npm start`.
-5. Deploy — logs should show `Kiwi bot started as @zensweep_bot` and `Telegram command menu synced`.
+5. Deploy — logs should show `Zensweep bot started as @zensweep_bot` and `Telegram command menu synced`.
 
 ## Security
 
 - Private keys are stored encrypted at rest (AES-256-GCM) and never sent through Telegram except via the explicit /export command, which warns the user to delete the message after importing.
 - Changing KEY_ENCRYPTION_SECRET after wallets are created will make existing keys undecryptable.
-- Kiwi never holds or transfers funds outside of explicit user actions (Buy, Sell, Mint, Withdraw).
+- Zensweep never holds or transfers funds outside of explicit user actions (Buy, Sell, Mint, Withdraw).

@@ -2,7 +2,7 @@ import { Bot, Context, InlineKeyboard } from "grammy";
 import { dbService, type TaskRow } from "../db";
 import { kiwiLaunches, fetchLaunchProjects, buildLaunchCard, getLaunchStatusLabel, mintWindowLine, getMintWindowState, formatMintCountdown } from "../data/launches";
 import { walletManager } from "../wallet/manager";
-import { SUPPORTED_CHAINS, getChainConfig, FEE_PERCENTAGE, FEE_RECIPIENT_WALLET, ELYSIUM, DEFAULT_CHAIN_KEY } from "../config";
+import { SUPPORTED_CHAINS, getChainConfig, FEE_PERCENTAGE, FEE_RECIPIENT_WALLET, ELYSIUM, DEFAULT_CHAIN_KEY, ZENSWEEP_LAUNCH_API_URL } from "../config";
 import { marketplaceService } from "../engine/marketplace";
 import { minterService } from "../engine/minter";
 import { openSeaService } from "../engine/opensea";
@@ -37,7 +37,7 @@ export function registerHandlers(bot: Bot) {
     const chain = user?.selected_chain || DEFAULT_CHAIN_KEY;
     const chainConfig = getChainConfig(chain);
 
-    let message = `🚀 *Kiwi — Ascend & Elysium Launch Assistant*\n\n`;
+    let message = `🚀 *Zensweep — Ascend & Elysium Launch Assistant*\n\n`;
     message += `🌐 *Active Chain:* \`${chainConfig.name}\`\n`;
     message += `🧭 *Focus:* live Elysium launch tracking, mint-window countdowns, on-chain deployment and wallet monitoring for Ascend launches.\n\n`;
 
@@ -45,7 +45,7 @@ export function registerHandlers(bot: Bot) {
       const balance = await walletManager.getBalance(user.wallet_address as Address, chain, false);
       message += `💳 *Wallet:* \`${user.wallet_address}\`\n`;
       message += `💰 *Balance:* \`${balance.eth} ${balance.symbol}\`\n\n`;
-      message += `Use Kiwi to monitor launches, stay on top of launch status, and manage your wallet.`;
+      message += `Use Zensweep to monitor launches, stay on top of launch status, and manage your wallet.`;
       await ctx.reply(message, { parse_mode: "Markdown", reply_markup: mainKeyboard });
     } else {
       message += `⚠️ *No wallet connected yet.*\n\nCreate a server-managed wallet to get started. Your signing key stays on-host and never leaves the bot server.`;
@@ -218,7 +218,7 @@ export function registerHandlers(bot: Bot) {
     else await renderSafetyInfo(ctx);
   });
 
-  // Kiwi-native trader settings — not a clone. /deployments is your hunter feed, /portfolio is your hold view.
+  // Zensweep-native trader settings — not a clone. /deployments is your hunter feed, /portfolio is your hold view.
   bot.command("slippage", async (ctx) => {
     const arg = ctx.message?.text?.split(/\s+/)[1];
     const uid = ctx.from?.id;
@@ -238,7 +238,7 @@ export function registerHandlers(bot: Bot) {
 
   bot.command("copy", async (ctx) => {
     await ctx.reply(
-      `👥 *Kiwi Auto-Follow — V2 on the roadmap*\n\nKiwi will let you mirror up to 5 wallets on Elysium. Every mirrored buy runs the Safety Engine from *your* wallet first, and uses your slippage setting to keep frontruns harder.\n\nTestnet is paper mode until the DEX is live. For now \`/watch\` already tracks any wallet live — Auto-Follow builds on top.`,
+      `👥 *Zensweep Auto-Follow — V2 on the roadmap*\n\nKiwi will let you mirror up to 5 wallets on Elysium. Every mirrored buy runs the Safety Engine from *your* wallet first, and uses your slippage setting to keep frontruns harder.\n\nTestnet is paper mode until the DEX is live. For now \`/watch\` already tracks any wallet live — Auto-Follow builds on top.`,
       { parse_mode: "Markdown", reply_markup: mainKeyboard }
     );
   });
@@ -247,7 +247,7 @@ export function registerHandlers(bot: Bot) {
     await renderHelpMenu(ctx);
   });
 
-  // --- Aliases for stale Telegram autocomplete (old demo) -> current Kiwi ---
+  // --- Aliases for stale Telegram autocomplete (old demo) -> current Zensweep ---
   bot.command("demowallet", async (ctx) => { await renderWalletMenu(ctx); });
   bot.command("demotokens", async (ctx) => {
     await ctx.reply("Demo tokens = paper trades now. Paste any `0x...` and tap *Buy 0.1 HYPE* - it records a synthetic position you can see in /portfolio.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
@@ -294,7 +294,7 @@ export function registerHandlers(bot: Bot) {
     const chain = user?.selected_chain || DEFAULT_CHAIN_KEY;
     const chainConfig = getChainConfig(chain);
 
-    let message = `🚀 *Kiwi — Ascend & Elysium Launch Assistant*\n\n`;
+    let message = `🚀 *Zensweep — Ascend & Elysium Launch Assistant*\n\n`;
     message += `🌐 *Active Chain:* \`${chainConfig.name}\`\n`;
 
     if (user) {
@@ -360,7 +360,7 @@ export function registerHandlers(bot: Bot) {
     const uid = ctx.from?.id; if (!uid) return;
     userStates[uid] = { step: "awaiting_import_key" };
     await ctx.reply(
-      `🔑 *Import Wallet*\n\nSend your private key as \`0x…\` (64 hex). It will be encrypted on the bot host.\n\n*Steps:* Paste → Kiwi switches to that wallet. Delete your message after.\n\nOr reply \`/cancel\``,
+      `🔑 *Import Wallet*\n\nSend your private key as \`0x…\` (64 hex). It will be encrypted on the bot host.\n\n*Steps:* Paste → Zensweep switches to that wallet. Delete your message after.\n\nOr reply \`/cancel\``,
       { parse_mode: "Markdown" }
     );
   });
@@ -581,7 +581,7 @@ export function registerHandlers(bot: Bot) {
     if (!uid) return;
     const bps = Number(ctx.match[1]);
     dbService.setSlippageBps(uid, bps);
-    await ctx.reply(`✅ Slippage set to \`${bps / 100}%\` — Kiwi will use this for every buy/sell so it's harder to front-run.`, { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(dbService.getSlippageBps(uid)) });
+    await ctx.reply(`✅ Slippage set to \`${bps / 100}%\` — Zensweep will use this for every buy/sell so it's harder to front-run.`, { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(dbService.getSlippageBps(uid)) });
   });
 
   bot.callbackQuery("menu_help", async (ctx) => {
@@ -1155,7 +1155,7 @@ export function registerHandlers(bot: Bot) {
     // Unknown /command (including stale demo menu) -> point at the real menu
     if (text.startsWith("/")) {
       await ctx.reply(
-        "Unknown command. Open /help or use the menu buttons — Kiwi is Elysium-first: /elysium, /deployments, /watch, /portfolio, /mints.",
+        "Unknown command. Open /help or use the menu buttons — Zensweep is Elysium-first: /elysium, /deployments, /watch, /portfolio, /mints.",
         { parse_mode: "Markdown", reply_markup: mainKeyboard }
       );
       return;
@@ -1707,14 +1707,14 @@ async function renderListingsMenu(ctx: Context) {
 async function renderLaunchMenu(ctx: Context) {
   let msg: string;
   try {
-    const apiUrl = process.env.KIWI_LAUNCH_API_URL || "";
+    const apiUrl = ZENSWEEP_LAUNCH_API_URL || "";
     const projects = await fetchLaunchProjects();
-    msg = `🚀 *Kiwi Launchboard*\n\n`;
+    msg = `🚀 *Zensweep Launchboard*\n\n`;
     if (apiUrl) {
       msg += `Source: launch API • ${projects.length} tracked projects\n\n`;
     } else {
       msg += `Source: built-in ecosystem references (pre-launch) • ${projects.length} entries\n`;
-      msg += `_No live launch feed connected — set KIWI_LAUNCH_API_URL for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
+      msg += `_No live launch feed connected — set \`ZENSWEEP_LAUNCH_API_URL\` for live data (alias \`KIWI_LAUNCH_API_URL\` kept). For real on-chain activity use 🆕 Deployments._\n\n`;
     }
     for (const project of projects) {
       msg += `${buildLaunchCard(project)}\n\n`;
@@ -1760,7 +1760,7 @@ async function renderMintsMenu(ctx: Context) {
     if (p.contractAddress) msg += `Contract: \`${p.contractAddress}\`\n`;
     msg += `\n`;
   }
-  msg += `Kiwi DM-alerts you the moment a tracked window flips to opens-soon or live.`;
+  msg += `Zensweep DM-alerts you the moment a tracked window flips to opens-soon or live.`;
 
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
 }
@@ -1847,7 +1847,7 @@ async function renderWatchlistMenu(ctx: Context) {
   const watches = dbService.getUserWatches(userId);
   if (watches.length === 0) {
     await ctx.reply(
-      `👀 *Watchlist*\n\nYou're not tracking any addresses yet.\n\nSend \`/watch <0x…> [label]\` to track a wallet or launch contract on Elysium. Kiwi DM-alerts you when its balance moves or fresh transfers appear.\n\n*Example:* \`/watch 0x1234…abcd Team treasury\``,
+      `👀 *Watchlist*\n\nYou're not tracking any addresses yet.\n\nSend \`/watch <0x…> [label]\` to track a wallet or launch contract on Elysium. Zensweep DM-alerts you when its balance moves or fresh transfers appear.\n\n*Example:* \`/watch 0x1234…abcd Team treasury\``,
       { parse_mode: "Markdown", reply_markup: mainKeyboard }
     );
     return;
@@ -1988,12 +1988,12 @@ async function renderAlertsMenu(ctx: Context) {
   const projects = await fetchLaunchProjects();
   const alertProjects = projects.filter((project) => project.status === "live" || project.status === "minting");
 
-  let msg = `🔔 *Kiwi Alerts*\n\n`;
+  let msg = `🔔 *Zensweep Alerts*\n\n`;
   const deployOn = dbService.isDeployAlertsEnabled(ctx.from?.id ?? 0);
   msg += `🆕 Deployment auto-alerts: ${deployOn ? "🔔 *ON* — you'll be DMed new contract drops" : "🔕 *MUTED* — no deployment DMs"}\n`;
   msg += `${deployOn ? "Tap 🔕 Mute below to stop." : "Tap 🔔 Unmute below to re-enable."}\n\n`;
   if (alertProjects.length === 0) {
-    msg += `No live or minting launches right now. Kiwi will surface them here as soon as a project flips into an active launch stage.`;
+    msg += `No live or minting launches right now. Zensweep will surface them here as soon as a project flips into an active launch stage.`;
   } else {
     msg += `Active launch alerts:\n\n`;
     for (const project of alertProjects) {
@@ -2029,7 +2029,7 @@ async function renderStatusMenu(ctx: Context) {
   }
   const watches = userId ? dbService.getUserWatches(userId).length : 0;
 
-  let msg = `📊 *Kiwi Status*\n\n`;
+  let msg = `📊 *Zensweep Status*\n\n`;
   msg += `🌐 Active network: \`${chainConfig.name}\`\n`;
   msg += `⛓ Elysium live: ${healthLine}\n`;
   msg += `🔐 Wallet status: ${user ? "connected" : "not connected"}\n`;
@@ -2116,7 +2116,7 @@ async function renderSafetyCard(ctx: Context, token: Address) {
 
 async function renderSafetyInfo(ctx: Context) {
   await ctx.reply(
-    `🛡️ *Kiwi Safety Engine*\n\nKiwi runs a pre-buy simulation FROM your wallet with your real amount. If it flags a scam, Kiwi blocks or asks you to confirm first. Scans honeypot (sell revert), owner/mint, blacklist, and upgradeable proxy — no guesswork. Checks catch common traps, but no scan can guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
+    `🛡️ *Zensweep Safety Engine*\n\nKiwi runs a pre-buy simulation FROM your wallet with your real amount. If it flags a scam, Zensweep blocks or asks you to confirm first. Scans honeypot (sell revert), owner/mint, blacklist, and upgradeable proxy — no guesswork. Checks catch common traps, but no scan can guarantee a token is safe.\n🟢 SAFE ≥85 • 🟡 RISKY 60-84 • 🔴 BLOCKED/UNSAFE <60 or honeypot.\n\nPaste any \`0x…\` → safety card, or \`/safety 0x…\`.`,
     { parse_mode: "Markdown", reply_markup: mainKeyboard }
   );
 }
@@ -2126,7 +2126,7 @@ async function renderSlippageMenu(ctx: Context) {
   if (!uid) return;
   const bps = dbService.getSlippageBps(uid);
   await ctx.reply(
-    `⚙️ *Slippage* — how much price movement you'll accept\n\nCurrent: \`${bps / 100}%\` — Kiwi will use this for every buy/sell so it's harder to front-run.\n\nPick one:`,
+    `⚙️ *Slippage* — how much price movement you'll accept\n\nCurrent: \`${bps / 100}%\` — Zensweep will use this for every buy/sell so it's harder to front-run.\n\nPick one:`,
     { parse_mode: "Markdown", reply_markup: makeSlippageKeyboard(bps) }
   );
 }
@@ -2300,7 +2300,7 @@ async function handlePortfolioShare(ctx: Context) {
   let wins = 0, losses = 0; let totalPnlWei = 0n;
   for (const p of pos) { const pnl = BigInt(p.total_received_wei) - BigInt(p.total_spent_wei); totalPnlWei += pnl; if (pnl > 0n) wins++; else if (pnl < 0n) losses++; }
   const rate = wins + losses ? Math.round(wins / (wins + losses) * 100) : 0;
-  const card = `🏆 *Kiwi PnL Card* • @zensweep_bot\n\n*Total PnL:* ${totalPnlWei < 0n ? "-" + formatEther(-totalPnlWei) : formatEther(totalPnlWei)} HYPE${totalPnlWei < 0n ? " 🔴" : " 🟢"}\n*Win rate:* ${rate}% (${wins}W/${losses}L) over ${pos.length} token(s)\n*Chain:* Elysium • *Bot:* @zensweep_bot\n\n#Elysium #Kiwi`;
+  const card = `🏆 *Zensweep PnL Card* • @zensweep_bot\n\n*Total PnL:* ${totalPnlWei < 0n ? "-" + formatEther(-totalPnlWei) : formatEther(totalPnlWei)} HYPE${totalPnlWei < 0n ? " 🔴" : " 🟢"}\n*Win rate:* ${rate}% (${wins}W/${losses}L) over ${pos.length} token(s)\n*Chain:* Elysium • *Bot:* @zensweep_bot\n\n#Elysium #Zensweep`;
   await ctx.reply(card, { parse_mode: "Markdown", reply_markup: makePortfolioKeyboard() });
 }
 
@@ -2383,7 +2383,7 @@ async function promptWalletChange(ctx: Context) {
 
 
 async function renderHelpMenu(ctx: Context) {
-  let msg = `ℹ️ *Kiwi Help*\n\n`;
+  let msg = `ℹ️ *Zensweep Help*\n\n`;
   msg += `*Elysium-native:*\n`;
   msg += `• \`/launch\` — Tracked Ascend/Elysium launches\n`;
   msg += `• \`/mints\` — Mint-window countdowns\n`;
@@ -2394,14 +2394,14 @@ async function renderHelpMenu(ctx: Context) {
   msg += `• \`/unwatch <id>\` — Stop tracking\n`;
   msg += `\n`;
   msg += `*Trading (Elysium HYPE):*\n`;
-  msg += `• Paste any \`0x…\` → Kiwi card + Safety → Buy/Sell\n`;
+  msg += `• Paste any \`0x…\` → Zensweep card + Safety → Buy/Sell\n`;
   msg += `• \`/buy <0x…> <HYPE>\` / \`/sell <0x…> [25|50|100]\` (+ Buy X custom)\n`;
   msg += `• \`/safety <0x…>\` — honeypot/mint/blacklist/proxy — score 0–100\n`;
   msg += `• \`/portfolio\` — results, history and a share card\n`;
   msg += `• \`/slippage\` — your price tolerance (1–50%)\n`;
-  msg += `• \`/copy\` — Kiwi Auto-Follow up to 5 wallets (V2)\n`;
-  msg += `\n*Safety — Kiwi engine*\n`;
-  msg += `Pre-buy simulation FROM your wallet (your real amount). Flags honeypot, mint, blacklist, proxy. If it flags a scam, Kiwi blocks or asks you to confirm. No scan can guarantee safety.\n`;
+  msg += `• \`/copy\` — Zensweep Auto-Follow up to 5 wallets (V2)\n`;
+  msg += `\n*Safety — Zensweep engine*\n`;
+  msg += `Pre-buy simulation FROM your wallet (your real amount). Flags honeypot, mint, blacklist, proxy. If it flags a scam, Zensweep blocks or asks you to confirm. No scan can guarantee safety.\n`;
   msg += `\n*Your funds*\n`;
   msg += `\`/withdraw\` sends HYPE out at any time. \`/export\` shows your private key: never share it with anyone.\n`;
   msg += `\n*Wallet:*\n`;
@@ -2409,7 +2409,7 @@ async function renderHelpMenu(ctx: Context) {
   msg += `\n*Elysium note:*\n`;
   msg += `Cross-chain secondary markets are archived in Elysium-only mode. Use /launch and /deployments for Elysium-native discovery.\n`;
   msg += `\n`;
-  msg += `*Kiwi focus:*\n`;
+  msg += `*Zensweep focus:*\n`;
   msg += `- Live Elysium launch & deployment monitoring\n`;
   msg += `- Mint-window countdowns and alerts\n`;
   msg += `- On-chain wallet tracking for Ascend launches`;

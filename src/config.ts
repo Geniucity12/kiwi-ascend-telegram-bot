@@ -2,7 +2,7 @@ import "dotenv/config";
 import { defineChain, type Chain } from "viem";
 
 /**
- * Central configuration for Kiwi — Elysium-only.
+ * Central configuration for Zensweep — Elysium-only.
  * Elysium (by Kinetiq): Arbitrum Orbit L2 settling to HyperEVM (chain 999), HYPE gas.
  * Testnet is live on chain 99801. https://elysium.kinetiq.xyz
  */
@@ -64,6 +64,12 @@ export const KALOS_API_URL = env("KALOS_API_URL", "");
 export const KALOS_MARKETPLACE_ADDRESS = env("KALOS_MARKETPLACE_ADDRESS", "");
 export const ALERT_POLL_INTERVAL_MS = Number(env("ALERT_POLL_INTERVAL_MS", String(5 * 60_000)));
 export const OPENSEA_API_KEY = env("OPENSEA_API_KEY", "");
+
+/**
+ * Renamed: Zensweep (was Kiwi). To keep existing hosts from breaking, the
+ * launch API feeds from the brand name act as aliases for the primary name.
+ */
+export const ZENSWEEP_LAUNCH_API_URL = env("ZENSWEEP_LAUNCH_API_URL", "") || env("KIWI_LAUNCH_API_URL", "");
 
 /**
  * Testnet HYPE faucet. Set FAUCET_PRIVATE_KEY to a testnet-funded key that

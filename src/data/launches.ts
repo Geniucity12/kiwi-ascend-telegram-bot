@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { ZENSWEEP_LAUNCH_API_URL } from "../config";
 
 export type LaunchStatus = "upcoming" | "live" | "minting" | "sold_out" | "beta";
 
@@ -105,7 +106,7 @@ function normalizeLaunches(input: unknown): LaunchProject[] {
 }
 
 export async function fetchLaunchProjects(): Promise<LaunchProject[]> {
-  const apiUrl = process.env.KIWI_LAUNCH_API_URL || "";
+  const apiUrl = ZENSWEEP_LAUNCH_API_URL || process.env.ZENSWEEP_LAUNCH_API_URL || process.env.KIWI_LAUNCH_API_URL || "";
   const localJsonPath = path.resolve(process.cwd(), "src/data/launches.seed.json");
 
   if (apiUrl) {
@@ -117,7 +118,7 @@ export async function fetchLaunchProjects(): Promise<LaunchProject[]> {
         if (projects.length > 0) return projects;
       }
     } catch (error) {
-      console.warn("Kiwi launch API unavailable, using built-in references:", error);
+      console.warn("Zensweep launch API unavailable, using built-in references:", error);
     }
   }
 
@@ -128,7 +129,7 @@ export async function fetchLaunchProjects(): Promise<LaunchProject[]> {
       const projects = normalizeLaunches(data);
       if (projects.length > 0) return projects;
     } catch (error) {
-      console.warn("Kiwi launch seed file unreadable, using built-in references:", error);
+      console.warn("Zensweep launch seed file unreadable, using built-in references:", error);
     }
   }
 

@@ -1,7 +1,7 @@
 {
-  "name": "kiwi-ascend-bot",
+  "name": "zensweep-ascend-telegram-bot",
   "version": "1.0.0",
-  "description": "Kiwi - Ascend & Elysium Launch Assistant Telegram Bot",
+  "description": "Zensweep - Ascend & Elysium Launch Assistant Telegram Bot",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
