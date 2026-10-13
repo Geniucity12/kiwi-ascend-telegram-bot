@@ -1705,25 +1705,31 @@ async function renderListingsMenu(ctx: Context) {
 }
 
 async function renderLaunchMenu(ctx: Context) {
+  let msg: string;
   try {
     const apiUrl = process.env.KIWI_LAUNCH_API_URL || "";
     const projects = await fetchLaunchProjects();
-    let msg = `🚀 *Kiwi Launchboard*\n\n`;
+    msg = `🚀 *Kiwi Launchboard*\n\n`;
     if (apiUrl) {
       msg += `Source: launch API • ${projects.length} tracked projects\n\n`;
     } else {
       msg += `Source: built-in ecosystem references (pre-launch) • ${projects.length} entries\n`;
-      msg += `_No live launch feed connected — set \`KIWI_LAUNCH_API_URL\` for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
+      msg += `_No live launch feed connected — set KIWI_LAUNCH_API_URL for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
     }
-
     for (const project of projects) {
       msg += `${buildLaunchCard(project)}\n\n`;
     }
-
-    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
   } catch (e: any) {
     console.error("renderLaunchMenu failed", e);
     await ctx.reply(`⚠️ Launches temporarily unavailable: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    return;
+  }
+  // Telegram legacy Markdown rejects unescaped *_[] — retry once as plain text so the menu always opens.
+  try {
+    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  } catch {
+    const plain = msg.replace(/([*_`\\])/g, "");
+    await ctx.reply(plain, { parse_mode: undefined, reply_markup: mainKeyboard });
   }
 }
 

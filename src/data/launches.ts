@@ -3,6 +3,16 @@ import path from "node:path";
 
 export type LaunchStatus = "upcoming" | "live" | "minting" | "sold_out" | "beta";
 
+/**
+ * Escape Telegram Markdown (legacy) special chars in dynamic text.
+ * Without this, a project named "Cool_NFT (v2)" or "My *Project*" breaks
+ * sendMessage with "can't parse entities".
+ */
+export function escMd(input: string): string {
+  return String(input ?? "")
+    .replace(/([_*`\[])/g, "\\$1");
+}
+
 export interface LaunchProject {
   id: string;
   name: string;
@@ -135,14 +145,14 @@ export function buildLaunchCard(project: LaunchProject): string {
   }[project.status] ?? "⚪";
 
   return [
-    `\n*${badge} ${project.name}*`,
-    `_${getLaunchStatusLabel(project.status)} • ${project.stage}_`,
-    `${project.summary}`,
-    `Chain: \`${project.chain}\` • ${mintWindowLine(project)}`,
-    project.website ? `Website: ${project.website}` : "",
-    project.x ? `X: ${project.x}` : "",
-    project.contractAddress ? `Contract: \`${project.contractAddress.slice(0, 10)}...\`` : "",
-    project.tags.length ? `Tags: ${project.tags.map((tag) => `#${tag}`).join(" ")}` : "",
+    `\n*${escMd(badge)} ${escMd(project.name)}*`,
+    `_${escMd(getLaunchStatusLabel(project.status))} • ${escMd(project.stage)}_`,
+    escMd(project.summary),
+    `Chain: \`${escMd(project.chain)}\` • ${escMd(mintWindowLine(project))}`,
+    project.website ? `Website: ${escMd(project.website)}` : "",
+    project.x ? `X: ${escMd(project.x)}` : "",
+    project.contractAddress ? `Contract: \`${escMd(project.contractAddress.slice(0, 10))}...\`` : "",
+    project.tags.length ? `Tags: ${project.tags.map((tag) => `#${escMd(tag)}`).join(" ")}` : "",
     "",
   ].filter(Boolean).join("\n");
 }
