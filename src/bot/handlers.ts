@@ -21,6 +21,7 @@ import {
   makeTokenCardKeyboard,
   makeSafetyKeyboard,
   makeSlippageKeyboard,
+  makeNftCardKeyboard,
 } from "./keyboards";
 import { formatEther, parseEther, parseUnits, type Address, type Hex } from "viem";
 
@@ -176,6 +177,12 @@ export function registerHandlers(bot: Bot) {
   bot.command("export", async (ctx) => {
     await handleExportKey(ctx);
   });
+  bot.command("import", async (ctx) => {
+    const arg = ctx.message?.text?.split(/\s+/)[1] ?? "";
+    if (!arg) { await ctx.reply("Usage: `/import 0x...privateKey`", { parse_mode: "Markdown" }); return; }
+    await handleWalletImport(ctx, arg);
+  });
+  bot.command("wallet-change", async (ctx) => { await promptWalletChange(ctx); });
 
   bot.command("token", async (ctx) => {
     const arg = ctx.message?.text?.split(/\s+/)[1] ?? "";
@@ -350,20 +357,21 @@ export function registerHandlers(bot: Bot) {
 
   bot.callbackQuery("wallet_import", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
-    await ctx.reply("Private-key import through Telegram is disabled. Never send a wallet key in chat.");
+    const uid = ctx.from?.id; if (!uid) return;
+    userStates[uid] = { step: "awaiting_import_key" };
+    await ctx.reply(
+      `🔑 *Import Wallet*\n\nSend your private key as \`0x…\` (64 hex). It will be encrypted on the bot host.\n\n*Steps:* Paste → Kiwi switches to that wallet. Delete your message after.\n\nOr reply \`/cancel\``,
+      { parse_mode: "Markdown" }
+    );
   });
 
   bot.callbackQuery("wallet_export", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
-    const userId = ctx.from?.id;
-    if (!userId) { await ctx.reply("No wallet."); return; }
-    const pk = walletManager.exportPrivateKey(userId);
-    if (!pk) { await ctx.reply("No wallet found."); return; }
-    // Warn before revealing the key; users expect export. Warn, don't block.
-    await ctx.reply(
-      `🔑 *Private Key Export*\n\n\`${pk}\`\n\n⚠️ Anyone with this key controls the wallet. Never share it. Delete this message after importing to MetaMask.`,
-      { parse_mode: "Markdown" }
-    );
+    await handleExportKey(ctx);
+  });
+  bot.callbackQuery("wallet_change", async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    await promptWalletChange(ctx);
   });
 
   bot.callbackQuery("wallet_withdraw", async (ctx) => {
@@ -674,6 +682,11 @@ export function registerHandlers(bot: Bot) {
     const text = ctx.message.text.trim();
     if (!userId) return;
 
+    if (text === "/cancel") {
+      if (userStates[userId]) { delete userStates[userId]; await ctx.reply("Cancelled.", { parse_mode: "Markdown", reply_markup: mainKeyboard }); }
+      return;
+    }
+
     const state = userStates[userId];
 
     if (state?.step === "awaiting_withdraw_address") {
@@ -819,6 +832,38 @@ export function registerHandlers(bot: Bot) {
       const { token, amountStr } = state.data ?? {};
       if (!token || !amountStr) { await ctx.reply("Session expired, try again.", { parse_mode: "Markdown" }); return; }
       await executeTokenBuy(ctx, token as Address, amountStr);
+      return;
+    }
+
+    if (state?.step === "awaiting_import_key") {
+      const k = text.trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(k)) {
+        await ctx.reply("❌ Invalid key — need 64 hex chars after `0x...`. Try again or `/cancel`.", { parse_mode: "Markdown" });
+        return;
+      }
+      delete userStates[userId];
+      try {
+        const w2 = walletManager.importWallet(userId, k);
+        await ctx.reply(`✅ Wallet switched to \`${w2.address}\` — encrypted and live. Deposit with this new address.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+        try { await ctx.deleteMessage(); } catch {}
+      } catch (e: any) {
+        await ctx.reply(`❌ Import failed: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown" });
+      }
+      return;
+    }
+
+    if (state?.step === "awaiting_wallet_change_confirm") {
+      delete userStates[userId];
+      if (text.trim().toUpperCase() !== "CONFIRM") {
+        await ctx.reply("Change wallet cancelled. Your old wallet is still active.", { parse_mode: "Markdown", reply_markup: mainKeyboard });
+        return;
+      }
+      try {
+        const w2 = walletManager.createNewWallet(userId);
+        await ctx.reply(`✅ New wallet created: \`${w2.address}\`\n\nOld key overwritten. Use \`/wallet\` to see balance, \`/export\` to back up new key.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+      } catch (e: any) {
+        await ctx.reply(`❌ Could not create: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown" });
+      }
       return;
     }
 
@@ -1608,21 +1653,26 @@ async function renderListingsMenu(ctx: Context) {
 }
 
 async function renderLaunchMenu(ctx: Context) {
-  const apiUrl = process.env.KIWI_LAUNCH_API_URL || "";
-  const projects = await fetchLaunchProjects();
-  let msg = `🚀 *Kiwi Launchboard*\n\n`;
-  if (apiUrl) {
-    msg += `Source: launch API • ${projects.length} tracked projects\n\n`;
-  } else {
-    msg += `Source: built-in ecosystem references (pre-launch) • ${projects.length} entries\n`;
-    msg += `_No live launch feed connected — set \`KIWI_LAUNCH_API_URL\` for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
-  }
+  try {
+    const apiUrl = process.env.KIWI_LAUNCH_API_URL || "";
+    const projects = await fetchLaunchProjects();
+    let msg = `🚀 *Kiwi Launchboard*\n\n`;
+    if (apiUrl) {
+      msg += `Source: launch API • ${projects.length} tracked projects\n\n`;
+    } else {
+      msg += `Source: built-in ecosystem references (pre-launch) • ${projects.length} entries\n`;
+      msg += `_No live launch feed connected — set \`KIWI_LAUNCH_API_URL\` for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
+    }
 
-  for (const project of projects) {
-    msg += `${buildLaunchCard(project)}\n\n`;
-  }
+    for (const project of projects) {
+      msg += `${buildLaunchCard(project)}\n\n`;
+    }
 
-  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  } catch (e: any) {
+    console.error("renderLaunchMenu failed", e);
+    await ctx.reply(`⚠️ Launches temporarily unavailable: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+  }
 }
 
 async function renderMarketsMenu(ctx: Context) {
@@ -1935,6 +1985,23 @@ async function renderStatusMenu(ctx: Context) {
 async function renderTokenCard(ctx: Context, token: Address) {
   const userId = ctx.from?.id;
   const w = userId ? walletManager.getUserWallet(userId) : undefined;
+  let meta: Awaited<ReturnType<typeof getDeploymentMeta>> | null = null;
+  try { meta = await getDeploymentMeta(token, ELYSIUM.key); } catch {}
+  const explorer = getChainConfig(ELYSIUM.key).explorerUrl;
+  if (meta && meta.kind === "nft") {
+    const name = meta.name ?? "NFT Collection";
+    const sym = meta.symbol ? ` ($${meta.symbol})` : "";
+    const short = `\`${token.slice(0, 10)}…\``;
+    const url = explorer ? `${explorer}/address/${token}` : undefined;
+    const msg = `🖼️ *${name}${sym}* — NFT\n${short} ${token}\n\n*Collection on Elysium* — not a fungible token.\n${url ? `🔍 [View on Explorer](${url}) • ` : ""}👀 Tap Watch to track holders.\n\n*This is an NFT — trading via Kalos, not HYPE swaps.* No Price / Liquidity / Slippage here. Use \`/watch\` or hunter feed \`/deployments\`.`;
+    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: makeNftCardKeyboard(token, url) });
+    return;
+  }
+  if (meta && meta.kind === "contract") {
+    const sz = meta.bytecodeSize ? `${meta.bytecodeSize} bytes` : "—";
+    await ctx.reply(`📄 *Not a tradable token* — \`${token}\`\n\nKind: Contract • Size: ${sz}\nTry hunter feed \`/deployments\` or \`/watch\` to track it.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    return;
+  }
   await ctx.reply(`🔍 Analyzing \`${token}\` on Elysium…`, { parse_mode: "Markdown" });
   let report;
   try {
@@ -1952,9 +2019,8 @@ async function renderTokenCard(ctx: Context, token: Address) {
     if (userId) slippagePct = `${(dbService.getSlippageBps(userId) / 100).toFixed(0)}%`;
   } catch {}
   try {
-    const meta = await getDeploymentMeta(token, ELYSIUM.key);
-    if (meta.totalSupplyFormatted) supplyLine = `Supply: ${meta.totalSupplyFormatted}`;
-    else if (meta.kind === "token") supplyLine = `Supply: ${meta.name ?? ""} (${meta.symbol ?? ""})`;
+    if (meta?.totalSupplyFormatted) supplyLine = `Supply: ${meta.totalSupplyFormatted}`;
+    else if (meta?.kind === "token") supplyLine = `Supply: ${meta.name ?? ""} (${meta.symbol ?? ""})`;
   } catch {}
   // Try live quote if router is set — otherwise keep paper lines
   try {
@@ -1971,7 +2037,8 @@ async function renderTokenCard(ctx: Context, token: Address) {
   if (w) {
     try { const b = await tradingService.getTokenBalance(token, w.address as Address); balLine = `\n💼 Your balance: \`${b.formatted} ${b.symbol ?? ""}\``; } catch {}
   } else balLine = "\n💼 No wallet yet — create one to trade.";
-  const title = report.name && report.symbol ? `${report.name} ($${report.symbol})` : report.symbol ? `$${report.symbol}` : `Token \`${token.slice(0, 10)}…\``;
+  const fixedTitle = meta?.kind === "token" && meta?.name ? `${meta.name} ($${meta.symbol ?? "—"})` : null;
+  const title = fixedTitle ?? (report.name && report.symbol ? `${report.name} ($${report.symbol})` : report.symbol ? `$${report.symbol}` : `Token \`${token.slice(0, 10)}…\``);
   const inlineSafety = formatSafetyInline(report);
   const msg = `*${title}*\n\`${token}\`\n\n${priceLine}\n${liquidityLine}\n${supplyLine}\nSlippage: ${slippagePct}\n\n${inlineSafety}${balLine}\n\n${formatSafetyReport(report)}\n\n${report.safe ? "✅ Ready to buy — tap below." : "⚠️ Review flags before buying."}`;
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: makeTokenCardKeyboard(token) });
@@ -2174,6 +2241,37 @@ async function handleExportKey(ctx: Context) {
   const pk = walletManager.exportPrivateKey(userId);
   if (!pk) { await ctx.reply("No wallet found.", { reply_markup: noWalletKeyboard, parse_mode: "Markdown" }); return; }
   await ctx.reply(`🔑 *Private Key Export*\n\n\`${pk}\`\n\n⚠️ Anyone with this key controls the wallet. Delete after importing to MetaMask.`, { parse_mode: "Markdown" });
+}
+
+async function handleWalletImport(ctx: Context, raw: string) {
+  const userId = ctx.from?.id; if (!userId) return;
+  const k = raw.trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(k)) {
+    await ctx.reply("❌ Invalid key — need 64 hex chars after `0x...`.", { parse_mode: "Markdown" });
+    return;
+  }
+  try {
+    const w = walletManager.importWallet(userId, k);
+    await ctx.reply(`✅ Wallet switched to \`${w.address}\` — encrypted and live.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    try { await ctx.deleteMessage(); } catch {}
+  } catch (e: any) {
+    await ctx.reply(`❌ Import failed: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown" });
+  }
+}
+
+async function promptWalletChange(ctx: Context) {
+  const userId = ctx.from?.id; if (!userId) return;
+  const existing = dbService.getUser(userId);
+  if (!existing) {
+    const w = walletManager.createNewWallet(userId);
+    await ctx.reply(`✅ Wallet created: \`${w.address}\`\n\nUse \`/export\` to back it up.`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    return;
+  }
+  userStates[userId] = { step: "awaiting_wallet_change_confirm" };
+  await ctx.reply(
+    `⚠️ *Change Wallet?*\n\nCurrent: \`${existing.wallet_address}\`\nThis creates a NEW wallet and overwrites the stored key. Withdraw first if you have funds.\n\nReply *CONFIRM* to create new wallet, or \`/cancel\`.`,
+    { parse_mode: "Markdown" }
+  );
 }
 
 

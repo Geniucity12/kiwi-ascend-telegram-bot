@@ -27,8 +27,11 @@ export const mainKeyboard = new InlineKeyboard()
 export const marketsKeyboard = new InlineKeyboard().text("\uD83D\uDD19 Main Menu", "menu_main");
 
 export const walletKeyboard = new InlineKeyboard()
-  .text("\uD83D\uDD04 Refresh Balance", "wallet_refresh")
-  .text("\uD83D\uDCE4 Withdraw All", "wallet_withdraw")
+  .text("\uD83D\uDD04 Refresh", "wallet_refresh")
+  .text("\uD83D\uDCE4 Withdraw", "wallet_withdraw")
+  .row()
+  .text("\uD83D\uDD11 Export Key", "wallet_export")
+  .text("\uD83D\uDD04 Change Wallet", "wallet_change")
   .row()
   .text("\uD83D\uDD19 Main Menu", "menu_main");
 
@@ -59,6 +62,12 @@ export function makeSlippageKeyboard(currentBps: number): InlineKeyboard {
   }
   kb.row().text("\uD83D\uDD19 Main Menu", "menu_main");
   return kb;
+}
+export function makeNftCardKeyboard(address: string, explorerUrl?: string): InlineKeyboard {
+  const k = new InlineKeyboard();
+  if (explorerUrl) k.url("View on Explorer", explorerUrl).row();
+  k.text("Watch", "watch_add_" + address).text("Main Menu", "menu_main");
+  return k;
 }
 export function makeChainKeyboard(selected: string): InlineKeyboard {
   const kb = new InlineKeyboard();
