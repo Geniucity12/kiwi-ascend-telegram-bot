@@ -369,6 +369,11 @@ export function registerHandlers(bot: Bot) {
     ctx.answerCallbackQuery().catch(() => {});
     await handleExportKey(ctx);
   });
+  bot.callbackQuery("wallet_faucet", async (ctx) => {
+    ctx.answerCallbackQuery({ text: "Requesting testnet HYPE..." }).catch(() => {});
+    await handleFaucet(ctx);
+  });
+  bot.command("faucet", async (ctx) => { await handleFaucet(ctx); });
   bot.callbackQuery("wallet_change", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
     await promptWalletChange(ctx);
@@ -2100,7 +2105,7 @@ async function executeTokenBuy(ctx: Context, token: Address, amountStr: string) 
   if (!userId) return;
   const wallet = walletManager.getUserWallet(userId);
   if (!wallet) return;
-  const HYPE_GATE_MSG = `❌ *Not enough HYPE.* This trade costs \`${amountStr} HYPE\` + gas.\n\nOn testnet you need testnet HYPE to trade. Tap 💧 *Get Testnet HYPE* to request some, then retry.`;
+  const HYPE_GATE_MSG = `❌ *Not enough HYPE.* This trade costs \`${amountStr} HYPE\` + gas.`;
   let balStr = "0";
   try {
     const b = await walletManager.getBalance(wallet.address, ELYSIUM.key, true);
@@ -2244,6 +2249,43 @@ async function handlePortfolioShare(ctx: Context) {
   const rate = wins + losses ? Math.round(wins / (wins + losses) * 100) : 0;
   const card = `🏆 *Kiwi PnL Card* • @zensweep_bot\n\n*Total PnL:* ${totalPnlWei < 0n ? "-" + formatEther(-totalPnlWei) : formatEther(totalPnlWei)} HYPE${totalPnlWei < 0n ? " 🔴" : " 🟢"}\n*Win rate:* ${rate}% (${wins}W/${losses}L) over ${pos.length} token(s)\n*Chain:* Elysium • *Bot:* @zensweep_bot\n\n#Elysium #Kiwi`;
   await ctx.reply(card, { parse_mode: "Markdown", reply_markup: makePortfolioKeyboard() });
+}
+
+async function handleFaucet(ctx: Context) {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const user = dbService.getUser(userId);
+  if (!user) { await ctx.reply("Create a wallet first.", { reply_markup: noWalletKeyboard, parse_mode: "Markdown" }); return; }
+  const gate = dbService.canFaucet(userId);
+  if (!gate.ok) {
+    const mins = Math.ceil(gate.waitMs / 60_000);
+    await ctx.reply(`⏳ Faucet on cooldown — try again in \`${mins}m\`.`, { parse_mode: "Markdown", reply_markup: walletKeyboard });
+    return;
+  }
+  const faucetKey = process.env.FAUCET_PRIVATE_KEY ?? "";
+  const faucetUrl = process.env.FAUCET_URL ?? "https://elysium.kinetiq.xyz";
+  if (!faucetKey) {
+    const msg = `💧 *Get Testnet HYPE*\n\nTestnet needs real testnet HYPE to buy. Claim from the faucet, then retry your trade.\n\n🔗 ${faucetUrl}\n\nPaste your wallet to prefill:\n\`${user.wallet_address}\``;
+    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: walletKeyboard });
+    return;
+  }
+  try {
+    await ctx.reply(`⏳ Dripping testnet HYPE to \`${user.wallet_address}\`…`, { parse_mode: "Markdown" });
+    const dripWei = BigInt(process.env.FAUCET_DRIP_WEI ?? "100000000000000000");
+    const { createPublicClient, createWalletClient, http, parseEther } = await import("viem");
+    const { privateKeyToAccount } = await import("viem/accounts");
+    const elysium = getChainConfig("elysium");
+    const faucetAccount = privateKeyToAccount(faucetKey as `0x${string}`);
+    const faucetClient = createWalletClient({ account: faucetAccount, chain: elysium.viemChain, transport: http(elysium.rpcUrl) });
+    const pub = createPublicClient({ chain: elysium.viemChain, transport: http(elysium.rpcUrl) });
+    const hash = await faucetClient.sendTransaction({ account: faucetAccount, to: user.wallet_address as `0x${string}`, value: dripWei, chain: elysium.viemChain });
+    await pub.waitForTransactionReceipt({ hash });
+    dbService.markFaucet(userId);
+    const kb = new InlineKeyboard().text("🔄 Refresh Balance", "wallet_refresh").text("📄 Explorer", `${faucetUrl}/address/${user.wallet_address}`).row().text("🔙 Main Menu", "menu_main");
+    await ctx.reply(`✅ *Dripped ${dripWei / 1_000_000_000_000_000n / 10n / 100n} HYPE* → \`${user.wallet_address}\`\n\nTx: \`${hash}\`\n\nNow retry your Buy.`, { parse_mode: "Markdown", reply_markup: kb });
+  } catch (e: any) {
+    await ctx.reply(`❌ Faucet failed: ${e?.shortMessage ?? e?.message ?? "unknown"}. Fund FAUCET_PRIVATE_KEY with testnet HYPE or share ${process.env.FAUCET_URL ?? "https://elysium.kinetiq.xyz"}`, { parse_mode: "Markdown", reply_markup: walletKeyboard });
+  }
 }
 
 async function handleExportKey(ctx: Context) {

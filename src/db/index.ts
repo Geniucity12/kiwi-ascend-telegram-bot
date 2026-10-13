@@ -17,6 +17,7 @@ export interface UserRow {
   created_at: string;
   deploy_alerts_enabled?: boolean;
   slippage_bps?: number;
+  faucet_last_at?: string | null;
 }
 
 /** Encrypted custodial key material (AES-256-GCM hex). Never leaves the host. */
@@ -544,6 +545,22 @@ export const dbService = {
     const u = (store.schema.users as any)[userId] as UserRow | undefined;
     if (!u) return;
     u.slippage_bps = Math.max(10, Math.min(5000, Math.round(bps)));
+    store.save();
+  },
+
+  canFaucet(userId: number): { ok: boolean; waitMs: number } {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u || !u.faucet_last_at) return { ok: true, waitMs: 0 };
+    const last = new Date(u.faucet_last_at).getTime();
+    const cooldown = Number(process.env.FAUCET_COOLDOWN_MS ?? String(60 * 60_000));
+    const diff = Date.now() - last;
+    if (diff >= cooldown) return { ok: true, waitMs: 0 };
+    return { ok: false, waitMs: cooldown - diff };
+  },
+  markFaucet(userId: number): void {
+    const u = (store.schema.users as any)[userId] as UserRow | undefined;
+    if (!u) return;
+    u.faucet_last_at = new Date().toISOString();
     store.save();
   },
 };

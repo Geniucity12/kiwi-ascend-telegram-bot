@@ -64,3 +64,13 @@ export const KALOS_API_URL = env("KALOS_API_URL", "");
 export const KALOS_MARKETPLACE_ADDRESS = env("KALOS_MARKETPLACE_ADDRESS", "");
 export const ALERT_POLL_INTERVAL_MS = Number(env("ALERT_POLL_INTERVAL_MS", String(5 * 60_000)));
 export const OPENSEA_API_KEY = env("OPENSEA_API_KEY", "");
+
+/**
+ * Testnet HYPE faucet. Set FAUCET_PRIVATE_KEY to a testnet-funded key that
+ * drips HYPE to new users (rate-limited per user). Leave empty to disable and
+ * show the Elysium faucet URL instead.
+ */
+export const FAUCET_PRIVATE_KEY = env("FAUCET_PRIVATE_KEY", "");
+export const FAUCET_DRIP_WEI = env("FAUCET_DRIP_WEI", "100000000000000000"); // 0.1 HYPE default
+export const FAUCET_COOLDOWN_MS = Number(env("FAUCET_COOLDOWN_MS", String(60 * 60_000))); // 1h per user
+export const FAUCET_URL = env("FAUCET_URL", "https://elysium.kinetiq.xyz");
