@@ -31,12 +31,16 @@ export const walletKeyboard = new InlineKeyboard()
   .text("\uD83D\uDCE4 Withdraw", "wallet_withdraw")
   .row()
   .text("\uD83D\uDD11 Export Key", "wallet_export")
+  .text("\uD83D\uDCE5 Import Wallet", "wallet_import")
+  .row()
   .text("\uD83D\uDD04 Change Wallet", "wallet_change")
   .row()
   .text("\uD83D\uDD19 Main Menu", "menu_main");
 
 export const noWalletKeyboard = new InlineKeyboard()
   .text("\u2795 Create Wallet", "wallet_generate")
+  .text("\uD83D\uDCE5 Import Wallet", "wallet_import")
+  .row()
   .text("\u2139\uFE0F Help", "menu_help");
 
 export function makePortfolioKeyboard(): InlineKeyboard {
