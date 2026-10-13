@@ -2100,6 +2100,17 @@ async function executeTokenBuy(ctx: Context, token: Address, amountStr: string) 
   if (!userId) return;
   const wallet = walletManager.getUserWallet(userId);
   if (!wallet) return;
+  const HYPE_GATE_MSG = `❌ *Not enough HYPE.* This trade costs \`${amountStr} HYPE\` + gas.\n\nOn testnet you need testnet HYPE to trade. Tap 💧 *Get Testnet HYPE* to request some, then retry.`;
+  let balStr = "0";
+  try {
+    const b = await walletManager.getBalance(wallet.address, ELYSIUM.key, true);
+    balStr = b.eth;
+    if (Number(b.eth) < Number(amountStr)) {
+      const kb = new InlineKeyboard().text("💧 Get Testnet HYPE", "wallet_faucet").row().text("🔄 Check Again", `tok_card_${token}`).row().text("🔙 Main Menu", "menu_main");
+      await ctx.reply(`${HYPE_GATE_MSG}\n\n💼 Balance: \`${b.eth} HYPE\``, { parse_mode: "Markdown", reply_markup: kb });
+      return;
+    }
+  } catch {}
   const hypeInWei = parseEther(amountStr);
   await ctx.reply(`⏳ Buying with *${amountStr} HYPE*…`, { parse_mode: "Markdown" });
   try {
