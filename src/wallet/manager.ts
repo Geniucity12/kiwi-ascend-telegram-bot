@@ -97,6 +97,29 @@ export const walletManager = {
     return w ? w.privateKey : null;
   },
 
+  async withdraw(userId: number, toAddress: Address, chainKey: string, amountWei: bigint): Promise<string> {
+    const cfg = getChainConfig(chainKey);
+    const wallet = this.getUserWallet(userId);
+    if (!wallet) throw new Error("No wallet found for this account.");
+    const account = privateKeyToAccount(wallet.privateKey);
+    const transport = http(cfg.rpcUrl);
+    const publicClient = createPublicClient({ chain: cfg.viemChain, transport });
+    const walletClient = createWalletClient({ account, chain: cfg.viemChain, transport });
+    const balance = await publicClient.getBalance({ address: account.address });
+    const gasPrice = await publicClient.getGasPrice();
+    const gasLimit = 21_000n;
+    const gasCost = gasPrice * gasLimit;
+    if (amountWei <= 0n) throw new Error("Amount must be > 0");
+    if (amountWei === BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639935")) {
+      if (balance <= gasCost) throw new Error("Insufficient balance to cover gas.");
+      amountWei = balance - gasCost;
+    }
+    if (balance < amountWei + gasCost) throw new Error(`Insufficient balance. You have ${formatEther(balance)} HYPE, need ${formatEther(amountWei + gasCost)} HYPE (amount + gas).`);
+    const hash = await walletClient.sendTransaction({ account, to: toAddress, value: amountWei, chain: cfg.viemChain });
+    await publicClient.waitForTransactionReceipt({ hash });
+    return hash;
+  },
+
   async withdrawAll(userId: number, toAddress: Address, chainKey: string): Promise<string> {
     const cfg = getChainConfig(chainKey);
     const wallet = this.getUserWallet(userId);

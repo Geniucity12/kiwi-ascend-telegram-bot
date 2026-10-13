@@ -386,7 +386,7 @@ export function registerHandlers(bot: Bot) {
 
     userStates[userId] = { step: "awaiting_withdraw_address" };
     await ctx.reply(
-      `📤 *Withdraw All Funds*\n\nPlease reply with the recipient EVM address (e.g. your hardware or personal wallet):`,
+      `📤 *Withdraw*\n\nSend to any EVM address. Reply with *address amount*\n\n*Examples:*\n• \`0xYourAddress 0.5\` — exact amount\n• \`0xYourAddress max\` — everything minus gas\n\nOr reply with just the address and I'll ask how much.`,
       { parse_mode: "Markdown" }
     );
   });
@@ -695,19 +695,65 @@ export function registerHandlers(bot: Bot) {
     const state = userStates[userId];
 
     if (state?.step === "awaiting_withdraw_address") {
+      const parts = text.trim().split(/\s+/);
+      const addr = parts[0] as Address;
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+        await ctx.reply("❌ Invalid address — need `0x...` 40 hex.");
+        return;
+      }
+      if (parts.length === 1) {
+        userStates[userId] = { step: "awaiting_withdraw_amount", data: { to: addr } };
+        await ctx.reply(`💰 *How much HYPE to send to \`${addr}\`?*\n\nReply with a number (e.g. \`0.5\`), \`max\` for everything minus gas, or \`/cancel\`.`, { parse_mode: "Markdown" });
+        return;
+      }
+      const amtStr = parts[1];
+      if (amtStr.toLowerCase() === "max") {
+        delete userStates[userId];
+        const user = dbService.getUser(userId);
+        const chain = user?.selected_chain || DEFAULT_CHAIN_KEY;
+        try {
+          await ctx.reply(`⏳ Withdrawing *max* to \`${addr}\`…`, { parse_mode: "Markdown" });
+          const txHash = await walletManager.withdrawAll(userId, addr, chain);
+          await ctx.reply(`✅ *Withdrawal Successful!*\n\nTx Hash: \`${txHash}\``, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+        } catch (err: any) { await ctx.reply(`❌ *Withdrawal Failed:* ${err.message}`, { parse_mode: "Markdown" }); }
+        return;
+      }
+      const amt = Number(amtStr);
+      if (!Number.isFinite(amt) || amt <= 0 || amt > 1_000_000) {
+        await ctx.reply("❌ Invalid amount — use a number like `0.5` or `max`.");
+        return;
+      }
       delete userStates[userId];
       const user = dbService.getUser(userId);
       const chain = user?.selected_chain || DEFAULT_CHAIN_KEY;
       try {
-        await ctx.reply(`⏳ Processing withdrawal...`);
-        const txHash = await walletManager.withdrawAll(userId, text as Address, chain);
-        await ctx.reply(`✅ *Withdrawal Successful!*\n\nTx Hash: \`${txHash}\``, {
-          parse_mode: "Markdown",
-          reply_markup: mainKeyboard,
-        });
-      } catch (err: any) {
-        await ctx.reply(`❌ *Withdrawal Failed:* ${err.message}`);
-      }
+        await ctx.reply(`⏳ Withdrawing \`${amtStr} HYPE\` to \`${addr}\`…`, { parse_mode: "Markdown" });
+        const txHash = await walletManager.withdraw(userId, addr, chain, parseEther(amtStr));
+        await ctx.reply(`✅ *Withdrawal Successful!*\n\nTx Hash: \`${txHash}\``, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+      } catch (err: any) { await ctx.reply(`❌ *Withdrawal Failed:* ${err.message}`, { parse_mode: "Markdown" }); }
+      return;
+    }
+
+    if (state?.step === "awaiting_withdraw_amount") {
+      delete userStates[userId];
+      const to = state.data?.to as Address;
+      if (!/^0x[a-fA-F0-9]{40}$/.test(to ?? "")) { await ctx.reply("Session expired, try again."); return; }
+      const amtStr = text.trim().toLowerCase();
+      const user = dbService.getUser(userId);
+      const chain = user?.selected_chain || DEFAULT_CHAIN_KEY;
+      try {
+        if (amtStr === "max") {
+          await ctx.reply(`⏳ Withdrawing *max* to \`${to}\`…`, { parse_mode: "Markdown" });
+          const txHash = await walletManager.withdrawAll(userId, to, chain);
+          await ctx.reply(`✅ *Withdrawal Successful!*\n\nTx Hash: \`${txHash}\``, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+        } else {
+          const amt = Number(amtStr);
+          if (!Number.isFinite(amt) || amt <= 0 || amt > 1_000_000) { await ctx.reply("❌ Invalid amount — use `0.5` or `max`."); return; }
+          await ctx.reply(`⏳ Withdrawing \`${amtStr} HYPE\` to \`${to}\`…`, { parse_mode: "Markdown" });
+          const txHash = await walletManager.withdraw(userId, to, chain, parseEther(amtStr));
+          await ctx.reply(`✅ *Withdrawal Successful!*\n\nTx Hash: \`${txHash}\``, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+        }
+      } catch (err: any) { await ctx.reply(`❌ *Withdrawal Failed:* ${err.message}`, { parse_mode: "Markdown" }); }
       return;
     }
 
