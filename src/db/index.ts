@@ -177,7 +177,28 @@ class JsonStore {
   }
 }
 
-const store = new JsonStore(path.resolve(process.cwd(), DB_FILE));
+// Resolve DB path: absolute when Volume mounted (/data/kiwi.db.json), relative otherwise.
+function resolveDbPath(): string {
+  if (path.isAbsolute(DB_FILE)) return DB_FILE;
+  return path.resolve(process.cwd(), DB_FILE);
+}
+const dbPath = resolveDbPath();
+(function migrateIfNeeded() {
+  const legacy = path.resolve(process.cwd(), "data/kiwi.db.json");
+  if (dbPath === legacy) return;
+  try {
+    if (!existsSync(dbPath) && existsSync(legacy)) {
+      mkdirSync(path.dirname(dbPath), { recursive: true });
+      writeFileSync(dbPath, readFileSync(legacy, "utf8"),"utf8");
+      console.log("[db] migrated legacy DB ->", dbPath);
+    }
+  } catch (e) { console.warn("[db] migration failed:", e); }
+})();
+console.log("[db] using", dbPath, "(DATA_DIR=" + DATA_DIR + ")");
+if (!process.env.RAILWAY_VOLUME_MOUNT_PATH && !dbPath.startsWith("/data") && process.env.RAILWAY_ENVIRONMENT) {
+  console.warn("[db] WARNING: ephemeral disk - WILL BE WIPED on redeploy. Mount Volume at /data.");
+}
+const store = new JsonStore(dbPath);
 
 export const dbService = {
   // --- Users ---

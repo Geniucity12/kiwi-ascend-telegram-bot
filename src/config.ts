@@ -55,8 +55,26 @@ export const FEE_PERCENTAGE = Number(env("FEE_PERCENTAGE", "0.025"));
 export const FEE_RECIPIENT_WALLET = env("FEE_RECIPIENT_WALLET", "");
 export const TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "");
 export const KEY_ENCRYPTION_SECRET = env("KEY_ENCRYPTION_SECRET", "");
-export const DB_FILE = env("DB_FILE", "data/kiwi.db.json");
-export const DATA_DIR = env("DATA_DIR", "data");
+// ---- Persistence: Railway volume-aware ----
+// Railway ephemeral FS wipes data/kiwi.db.json on every redeploy unless a Volume is mounted.
+// When a Volume is mounted at /data, Railway injects RAILWAY_VOLUME_MOUNT_PATH=/data.
+// We auto-detect it so the bot keeps wallets across pushes even if DB_FILE/DATA_DIR not set.
+// Preferred: mount a Volume at /data on the bot service and set DATA_DIR=/data + DB_FILE=/data/kiwi.db.json.
+function resolveDataDir(): string {
+  const explicit = (process.env.DATA_DIR ?? "").trim();
+  if (explicit && explicit !== "data") return explicit.replace(/\/$/, "");
+  const vol = (process.env.RAILWAY_VOLUME_MOUNT_PATH ?? "").trim();
+  if (vol) return vol.replace(/\/$/, "");
+  return "data";
+}
+function resolveDbFile(dataDir: string): string {
+  const explicit = (process.env.DB_FILE ?? "").trim();
+  if (explicit) return explicit;
+  if (dataDir !== "data" && dataDir.startsWith("/")) return dataDir + "/kiwi.db.json";
+  return "data/kiwi.db.json";
+}
+export const DATA_DIR = resolveDataDir();
+export const DB_FILE = resolveDbFile(DATA_DIR);
 export const MINT_FUNCTION_ABI = env("MINT_FUNCTION_ABI", "function mint(uint256 quantity) payable");
 export const ELYSIUM_ROUTER_ADDRESS = env("ELYSIUM_ROUTER_ADDRESS", "");
 export const ELYSIUM_WHYPE_ADDRESS = env("ELYSIUM_WHYPE_ADDRESS", "");
