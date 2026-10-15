@@ -6,22 +6,20 @@ import { SUPPORTED_CHAINS } from "../config";
  */
 
 export const mainKeyboard = new InlineKeyboard()
-  .text("\uD83D\uDE80 Launches", "menu_launches")
-  .text("\u23F3 Mints", "menu_mints")
-  .row()
-  .text("\u26D3 Elysium Live", "menu_elysium")
+  .text("\uD83D\uDE80 Projects", "menu_projects")
   .text("\uD83C\uDD95 Deployments", "menu_deployments")
   .row()
-  .text("\uD83D\uDCCA Portfolio", "menu_portfolio")
+  .text("\u26D3 Elysium Live", "menu_elysium")
   .text("\uD83D\uDC40 Watchlist", "menu_watchlist")
   .row()
+  .text("\uD83D\uDCCA Portfolio", "menu_portfolio")
   .text("\uD83D\uDCB3 Wallet", "menu_wallet")
+  .row()
   .text("\uD83D\uDD14 Safety", "menu_safety_info")
+  .text("\u2139\uFE0F Help", "menu_help")
   .row()
   .text("\uD83D\uDD14 Alerts", "menu_alerts")
-  .text("\uD83D\uDCCA Status", "menu_status")
-  .row()
-  .text("\u2139\uFE0F Help", "menu_help");
+  .text("\uD83D\uDCCA Status", "menu_status");
 
 // Archived: cross-chain secondary markets (OpenSea). Keep for git revert.
 export const marketsKeyboard = new InlineKeyboard().text("\uD83D\uDD19 Main Menu", "menu_main");

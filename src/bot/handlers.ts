@@ -66,7 +66,11 @@ export function registerHandlers(bot: Bot) {
     await renderLaunchMenu(ctx);
   });
 
+  // Projects is now primary
   bot.command("projects", async (ctx) => {
+    await renderLaunchMenu(ctx);
+  });
+  bot.command("project", async (ctx) => {
     await renderLaunchMenu(ctx);
   });
 
@@ -309,6 +313,11 @@ export function registerHandlers(bot: Bot) {
     }
   });
 
+  bot.callbackQuery("menu_projects", async (ctx) => {
+    ctx.answerCallbackQuery().catch(() => {});
+    await renderLaunchMenu(ctx);
+  });
+  // alias for cached message buttons
   bot.callbackQuery("menu_launches", async (ctx) => {
     ctx.answerCallbackQuery().catch(() => {});
     await renderLaunchMenu(ctx);
@@ -1709,19 +1718,26 @@ async function renderLaunchMenu(ctx: Context) {
   try {
     const apiUrl = ZENSWEEP_LAUNCH_API_URL || "";
     const projects = await fetchLaunchProjects();
-    msg = `🚀 *Zensweep Launchboard*\n\n`;
-    if (apiUrl) {
-      msg += `Source: launch API • ${projects.length} tracked projects\n\n`;
+    const liveCount = projects.filter((pr) => pr.status === "live" || pr.status === "minting").length;
+    if (liveCount > 0) {
+      msg = `🚀 *Zensweep Projects — Launchboard*\n_Live now: ${liveCount} / ${projects.length}_ • source: built-in references (pre-launch)\n_Watches Elysium for real projects when they go live — for on-chain truth use 🆕 Deployments._\n\n`;
     } else {
-      msg += `Source: built-in ecosystem references (pre-launch) • ${projects.length} entries\n`;
-      msg += `_No live launch feed connected — set \`ZENSWEEP_LAUNCH_API_URL\` for live data (alias \`KIWI_LAUNCH_API_URL\` kept). For real on-chain activity use 🆕 Deployments._\n\n`;
+      msg = `🚀 *Zensweep Projects — Launchboard*\n_Built-in ecosystem references (pre-launch) • ${projects.length} entries_\n`;
+      if (apiUrl) {
+        msg += `_Source: launch API • ${projects.length} tracked projects_\n\n`;
+      } else {
+        msg += `_No live launch feed connected — set \`ZENSWEEP_LAUNCH_API_URL\` — alias \`KIWI_LAUNCH_API_URL\` kept — for live data. For real on-chain activity use 🆕 Deployments._\n\n`;
+      }
     }
-    for (const project of projects) {
+    const ranking: Record<string, number> = { live: 0, minting: 0, beta: 1, upcoming: 2, sold_out: 3 };
+    const ranked = [...projects].sort((a, b) => (ranking[a.status] ?? 4) - (ranking[b.status] ?? 4));
+    for (const project of ranked) {
       msg += `${buildLaunchCard(project)}\n\n`;
     }
+    msg += `—\n_Tip: Deployments = what just hit the chain. Projects = who should launch. Watch a contract with \`/watch 0x…\` when it goes live._`;
   } catch (e: any) {
     console.error("renderLaunchMenu failed", e);
-    await ctx.reply(`⚠️ Launches temporarily unavailable: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
+    await ctx.reply(`⚠️ Projects temporarily unavailable: ${e?.message ?? "unknown"}`, { parse_mode: "Markdown", reply_markup: mainKeyboard });
     return;
   }
   // Telegram legacy Markdown rejects unescaped *_[] — retry once as plain text so the menu always opens.
