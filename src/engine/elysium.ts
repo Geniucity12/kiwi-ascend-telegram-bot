@@ -69,6 +69,8 @@ export interface DeploymentMeta {
   totalSupplyFormatted: string | null;
   bytecodeSize: number | null;
   label: string;
+  /** Human one-liner so the hunter feed knows what the contract does (token, nft, bot, arbitrage tooling...). */
+  description: string | null;
 }
 
 const erc20MetaAbi = [
@@ -83,10 +85,40 @@ const erc721MetaAbi = [
   { name: "symbol", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ] as const;
 
+function inferContractDescription(bytecode: string | null, bytecodeSize: number | null): { label: string; description: string } {
+  const sizeStr = bytecodeSize !== null ? `${bytecodeSize} bytes` : "unknown size";
+  if (!bytecode || bytecode === "0x" || bytecodeSize === 0) return { label: "❓ EOA / empty", description: "EOA / empty — no code deployed" };
+  const code = bytecode.toLowerCase();
+  const has = (sel: string) => code.includes(sel.toLowerCase());
+  const EIP1967_SLOT = "360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+  const dexSels = ["38ed1739","7ff36ab5","18cbafe5","fb3bdb41","ac9650d8","b6f9de95","5c11d795"];
+  const arbSels = ["ab9c4b5d","5cffe9de","f7073cdf","04e45aaf"];
+  const botSels = ["3593564c","1249c58b","4a25d94a","1cff79cd","61461954","23b872dd"];
+  const mintSels = ["40c10f19","a0712d68","6a627842","b88d4fde","aaf10f42"];
+  const ownSels = ["8da5cb5b","f2fde38b"];
+  const proxySels = ["5c60da1b","3659cfe6","d8b2a10e","ccf75308"];
+  if (code.includes(EIP1967_SLOT) || proxySels.some(has)) {
+    return { label: `🔗 Proxy \u2022 ${sizeStr}`, description: "Proxy / upgradeable — delegates to implementation (EIP-1967). Verify implementation on explorer." };
+  }
+  const isDex = dexSels.some(has); const isArb = arbSels.some(has);
+  const isBot = botSels.some(has); const isMint = mintSels.some(has); const isOwn = ownSels.some(has);
+  if (isDex && (isArb || isBot)) return { label: `⇄ Arbitrage / DEX tooling \u2022 ${sizeStr}`, description: "Arbitrage / DEX tooling — swap, flashLoan, multicall found. Likely bot or router helper." };
+  if (isDex) return { label: `⇄ DEX tooling \u2022 ${sizeStr}`, description: "DEX tooling — swap / router selectors (Uniswap-style)." };
+  if (isArb) return { label: `⚡ Arbitrage bot \u2022 ${sizeStr}`, description: "Arbitrage / MEV bot — flashLoan / executeOperation. Automation contract." };
+  if (isBot) return { label: `🤖 Bot \u2022 ${sizeStr}`, description: "Bot — on-chain automation (execute / snipe). Inspect owner." };
+  const looksFactory = bytecodeSize !== null && bytecodeSize > 8000 && isOwn && code.includes("f0");
+  if (looksFactory) return { label: `🏭 Factory \u2022 ${sizeStr}`, description: "Factory — deploys other contracts via CREATE/CREATE2." };
+  if (isMint && isOwn) return { label: `🛠️ Ownable mint \u2022 ${sizeStr}`, description: "Ownable / mintable — owner-controlled mint." };
+  if (isMint) return { label: `🛠️ Mintable \u2022 ${sizeStr}`, description: "Mintable — mint selectors found." };
+  if (isOwn) return { label: `🔐 Ownable \u2022 ${sizeStr}`, description: "Ownable — owner / transferOwnership." };
+  return { label: `📄 Contract \u2022 ${sizeStr}`, description: "Custom contract — unverified. Check explorer." };
+}
+
 export async function getDeploymentMeta(address: Address, chainKey: string = ELYSIUM.key): Promise<DeploymentMeta> {
   const { client } = clientFor(chainKey);
+  let bytecode: string | null = null;
   let bytecodeSize: number | null = null;
-  try { const code = await client.getBytecode({ address }); bytecodeSize = code ? (code.length - 2)/2 : 0; } catch { bytecodeSize = null; }
+  try { const code = await client.getBytecode({ address }); bytecode = code ?? null; bytecodeSize = code ? (code.length - 2)/2 : 0; } catch { bytecodeSize = null; }
   try {
     const [name, symbol, decimals, supply] = await Promise.all([
       client.readContract({ address, abi: erc20MetaAbi, functionName: "name" }).catch(()=>null),
@@ -99,7 +131,8 @@ export async function getDeploymentMeta(address: Address, chainKey: string = ELY
       let supplyFmt: string | null = null;
       try { if (supply !== null) supplyFmt = formatEther(supply as bigint).slice(0,14); } catch {}
       const label = "🪙 Token \u2022 " + name + " (" + symbol + ")" + (Number.isFinite(dec) ? " \u2022 " + dec + " decimals" : "");
-      return { address, kind: "token", name, symbol, decimals: dec, totalSupplyFormatted: supplyFmt, bytecodeSize, label };
+      const description = `ERC20 Token — ${name} ($${symbol}) on Elysium` + (Number.isFinite(dec) ? ` · ${dec} decimals` : "") + (supplyFmt ? ` · Supply ${supplyFmt}` : "");
+      return { address, kind: "token", name, symbol, decimals: dec, totalSupplyFormatted: supplyFmt, bytecodeSize, label, description };
     }
   } catch {}
   try {
@@ -108,12 +141,16 @@ export async function getDeploymentMeta(address: Address, chainKey: string = ELY
       client.readContract({ address, abi: erc721MetaAbi, functionName: "symbol" }).catch(()=>null),
     ]);
     if (typeof name === "string" && typeof symbol === "string" && name && symbol) {
-      return { address, kind: "nft", name, symbol, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "🖼️ NFT \u2022 " + name + " (" + symbol + ")" };
+      const description = `ERC721 NFT Collection — ${name} ($${symbol}) on Elysium · trading via Kalos`;
+      return { address, kind: "nft", name, symbol, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "🖼️ NFT \u2022 " + name + " (" + symbol + ")", description };
     }
   } catch {}
-  if (bytecodeSize === 0) return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "❓ EOA / empty" };
-  if (bytecodeSize !== null && bytecodeSize > 0) return { address, kind: "contract", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "📄 Contract \u2022 " + bytecodeSize + " bytes" };
-  return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "📄 Contract" };
+  if (bytecodeSize === 0) return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "❓ EOA / empty", description: "EOA / empty — no code deployed" };
+  if (bytecodeSize !== null && bytecodeSize > 0) {
+    const inferred = inferContractDescription(bytecode, bytecodeSize);
+    return { address, kind: "contract", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: inferred.label, description: inferred.description };
+  }
+  return { address, kind: "unknown", name: null, symbol: null, decimals: null, totalSupplyFormatted: null, bytecodeSize, label: "📄 Contract", description: "Custom contract — unverified." };
 }
 
 

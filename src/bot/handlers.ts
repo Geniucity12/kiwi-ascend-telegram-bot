@@ -1818,12 +1818,15 @@ async function renderDeploymentsMenu(ctx: Context, depth: number = 40) {
   const kb = new InlineKeyboard();
   for (const d of deployments.slice(0, 5)) {
     let label = "📄 Contract";
+    let description: string | null = null;
     try {
       const meta = await getDeploymentMeta(d.address, ELYSIUM.key);
       label = meta.label;
+      description = (meta as any).description ?? null;
     } catch { /* keep default */ }
     const name = label.replace(/^[^\s]+\s/, "");
     msg += `${label}\n`;
+    if (description) msg += `  _${description}_\n`;
     msg += `\`${d.address}\`\n`;
     msg += `  by \`${d.deployer}\` • block ${d.blockNumber}\n`;
     msg += `  [tx](${ELYSIUM.explorerUrl}/tx/${d.txHash}) • [address](${ELYSIUM.explorerUrl}/address/${d.address})\n`;
