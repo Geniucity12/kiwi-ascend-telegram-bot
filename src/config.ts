@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "node:path";
 import { defineChain, type Chain } from "viem";
 
 /**
@@ -69,8 +70,12 @@ function resolveDataDir(): string {
 }
 function resolveDbFile(dataDir: string): string {
   const explicit = (process.env.DB_FILE ?? "").trim();
-  if (explicit) return explicit;
-  if (dataDir !== "data" && dataDir.startsWith("/")) return dataDir + "/kiwi.db.json";
+  if (explicit) {
+    if (path.isAbsolute(explicit)) return explicit;
+    if (dataDir !== "data" && path.isAbsolute(dataDir)) return path.join(dataDir, path.basename(explicit));
+    return explicit;
+  }
+  if (dataDir !== "data" && path.isAbsolute(dataDir)) return path.join(dataDir, "kiwi.db.json");
   return "data/kiwi.db.json";
 }
 export const DATA_DIR = resolveDataDir();
